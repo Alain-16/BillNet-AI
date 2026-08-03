@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'expenses',
     'operations',
     'accounting',
+    'common',
 ]
 
 MIDDLEWARE = [
