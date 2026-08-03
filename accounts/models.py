@@ -1,7 +1,7 @@
 from django.db import models
 from googleapiclient import model
-from common.enums import CompanyStatus, UserRole
-from common.models import UUIDModel, TimeStampedModel
+from common.enums import CompanyStatus, UserRole,Provider,ConnectionStatus
+from common.models import UUIDModel, TimeStampedModel,CompanyOwnedModel
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 
 # Create your models here.
@@ -94,3 +94,32 @@ class Company(UUIDModel, TimeStampedModel):
     def __str__(self)->str:
         return self.name
 
+
+class IntegrationConnection(UUIDModel,TimeStampedModel,CompanyOwnedModel):
+
+    provider = models.CharField(max_length=30,choices=Provider.choices)
+    external_account_id = models.CharField(max_length=255)
+    status = models.CharField(max_length=30,choices=ConnectionStatus.choices,default=ConnectionStatus.DISCONNECTED)
+    scopes = models.JSONField(default=list)
+
+    token_secret_ref = models.CharField(max_length=255,blank=True)
+    token_expires_at = models.DateTimeField(null=True,blank=True)
+
+    sync_cursor = models.CharField(max_length=255, blank=True)
+    sync_cursor_committed_at = models.DateTimeField(null=True,blank=True)
+    last_sync_at = models.DateTimeField(null=True,blank=True)
+
+    connected_at = models.DateTimeField(null=True,blank=True)
+    disconnected_at = models.DateTimeField(null=True,blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company","provider"],
+                name="unique_connection_company_provider",
+
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider} . {self.external_account_id}"

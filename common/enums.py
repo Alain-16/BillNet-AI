@@ -41,3 +41,139 @@ class CompanyStatus(models.TextChoices):
     ACTIVE = "ACTIVE","active"
     INACTIVE = "INACTIVE","inactive"
     SUSPENDED = "SUSPENDED","suspended"
+
+class DocumentType(models.TextChoices):
+    RECEIPT = "RECEIPT", "Receipt"
+    PAID_INVOICE = "PAID_INVOICE", "Paid invoice"
+    UNPAID_INVOICE = "UNPAID_INVOICE", "Unpaid invoice"
+    REFUND_CREDIT = "REFUND_CREDIT", "Refund / credit"
+    PURCHASE_ORDER = "PURCHASE_ORDER", "Purchase order"
+    STATEMENT = "STATEMENT", "Statement"
+    IRRELEVANT = "IRRELEVANT", "Irrelevant"
+    UNKNOWN = "UNKNOWN", "Unknown"
+
+
+class ClassificationMethod(models.TextChoices):
+    RULE = "RULE", "Rule"
+    AI = "AI", "AI"
+    MANUAL = "MANUAL", "Manual"
+
+
+class ExtractionMethod(models.TextChoices):
+    EMBEDDED_TEXT = "EMBEDDED_TEXT", "Embedded PDF text"
+    TEMPLATE = "TEMPLATE", "Known template"
+    OCR = "OCR", "OCR"
+    VISION_AI = "VISION_AI", "Vision AI"
+    MANUAL = "MANUAL", "Manual entry"
+
+
+class ExtractionStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    COMPLETED = "COMPLETED", "Completed"
+    ABSTAINED = "ABSTAINED", "Abstained"   # model/OCR declined — safe, not a value
+    FAILED = "FAILED", "Failed"
+
+
+class ScanStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    CLEAN = "CLEAN", "Clean"
+    INFECTED = "INFECTED", "Infected"
+    FAILED = "FAILED", "Scan failed"
+
+
+class AccountingRefType(models.TextChoices):
+    VENDOR = "VENDOR", "Vendor"
+    ACCOUNT = "ACCOUNT", "Account"
+    CUSTOMER = "CUSTOMER", "Customer / project"
+    TAX_CODE = "TAX_CODE", "Tax code"
+    PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT", "Payment account"
+
+
+class VendorStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    INACTIVE = "INACTIVE", "Inactive"
+
+
+class ProjectStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    CLOSED = "CLOSED", "Closed"
+    INACTIVE = "INACTIVE", "Inactive"
+
+
+class MappingScope(models.TextChoices):
+    VENDOR = "VENDOR", "Vendor"
+    PROJECT = "PROJECT", "Project"
+    CATEGORY = "CATEGORY", "Expense category"
+    TAX = "TAX", "Tax code"
+    PAYMENT = "PAYMENT", "Payment account"
+
+
+class PaymentType(models.TextChoices):
+    CREDIT_CARD = "CREDIT_CARD", "Credit card"
+    BANK = "BANK", "Bank / debit"       # Dev Guide decision #1: both from day one
+
+
+class PolicyOutcome(models.TextChoices):
+    REVIEW_REQUIRED = "REVIEW_REQUIRED", "Review required"
+    AUTO_POST_ELIGIBLE = "AUTO_POST_ELIGIBLE", "Auto-post eligible"
+    BLOCKED = "BLOCKED", "Blocked"
+    REJECTED = "REJECTED", "Rejected"
+
+
+class TransactionPurpose(models.TextChoices):
+    PURCHASE = "PURCHASE", "Purchase"   # the ONE supported QBO entity in MVP
+
+
+class PostingStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    CLAIMED = "CLAIMED", "Claimed"
+    IN_PROGRESS = "IN_PROGRESS", "In progress"
+    POSTED = "POSTED", "Posted"
+    FAILED = "FAILED", "Failed"
+    UNKNOWN = "UNKNOWN", "Unknown outcome"   # timeout — readback before any retry
+
+
+class AuditActorType(models.TextChoices):
+    SYSTEM = "SYSTEM", "System"
+    USER = "USER", "User"
+    AI = "AI", "AI"
+    PROVIDER = "PROVIDER", "External provider"
+
+
+class AuditEventType(models.TextChoices):
+    DISCOVERY = "DISCOVERY", "Discovery"
+    DOWNLOAD = "DOWNLOAD", "Download"
+    FILE_CHECK = "FILE_CHECK", "File check"
+    CLASSIFICATION = "CLASSIFICATION", "Classification"
+    EXTRACTION = "EXTRACTION", "Extraction"
+    MATCH = "MATCH", "Match"
+    RULE_APPLIED = "RULE_APPLIED", "Rule applied"
+    AI_CALL = "AI_CALL", "AI call"                 # folds AIInvocation
+    CORRECTION = "CORRECTION", "Field correction"  # folds ReviewDecision (correct)
+    APPROVAL = "APPROVAL", "Approval"              # folds ReviewDecision (approve)
+    REJECTION = "REJECTION", "Rejection"           # folds ReviewDecision (reject)
+    DUPLICATE_RESOLUTION = "DUPLICATE_RESOLUTION", "Duplicate resolution"
+    POLICY_DECISION = "POLICY_DECISION", "Policy decision"
+    POSTING_ATTEMPT = "POSTING_ATTEMPT", "Posting attempt"
+    POSTING_RESULT = "POSTING_RESULT", "Posting result"
+    EXCEPTION = "EXCEPTION", "Exception"
+    RETRY = "RETRY", "Retry"
+
+
+class ExceptionSeverity(models.TextChoices):
+    LOW = "LOW", "Low"
+    MEDIUM = "MEDIUM", "Medium"
+    HIGH = "HIGH", "High"
+    CRITICAL = "CRITICAL", "Critical"
+
+
+class ExceptionStatus(models.TextChoices):
+    OPEN = "OPEN", "Open"
+    IN_PROGRESS = "IN_PROGRESS", "In progress"
+    RESOLVED = "RESOLVED", "Resolved"
+    IGNORED = "IGNORED", "Ignored"
+
+
+class SourceDocumentKind(models.TextChoices):
+    ATTACHMENT = "ATTACHMENT", "Attachment"
+    EMAIL_BODY = "EMAIL_BODY", "Email body"
