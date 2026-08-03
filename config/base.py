@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from decouple import config
-from datetime import timedelta
+
 import secrets
 import os
 
@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'operations',
     'accounting',
     'common',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -90,7 +91,7 @@ DATABASES = {
     }
 }
 
-#AUTH_USER_MODEL = 'accounts.User'
+AUTH_USER_MODEL = 'accounts.User'
 
 
 # Password validation
@@ -111,9 +112,17 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+]
+
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES':(
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
 
     ),
     'DEFAULT_PERMISSION_CLASSES':(
@@ -121,13 +130,7 @@ REST_FRAMEWORK = {
     )
 }
 
-SIMPLE_JWT ={
-    'ACCESS_TOKEN_LIFETIME':timedelta(minutes=int(config('JWT_ACCESS_TOKEN_LIFETIME',60))),
-    'REFRESH_TOKEN_LIFETIME':timedelta(days=int(config('JWT_REFRESH_TOKEN_LIFETIME',1))),
-    'ROTATE_REFRESH_TOKENS':True,
-    'BLACKLIST_AFTER_ROTATION':True,
-    'AUTH_HEADER_TYPES':('Bearer',),
-}
+
 
 CACHES = {
     'default':{
