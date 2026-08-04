@@ -158,6 +158,10 @@ class AuditEventType(models.TextChoices):
     POSTING_RESULT = "POSTING_RESULT", "Posting result"
     EXCEPTION = "EXCEPTION", "Exception"
     RETRY = "RETRY", "Retry"
+    CONFIG_UPDATED = "CONFIG_UPDATED", "Company config updated"
+    INTEGRATION_CONNECTED = "INTEGRATION_CONNECTED", "Integration connected"
+    INTEGRATION_REVOKED = "INTEGRATION_REVOKED", "Integration revoked"
+    REFERENCE_SYNCED = "REFERENCE_SYNCED", "Reference data synced"
 
 
 class ExceptionSeverity(models.TextChoices):

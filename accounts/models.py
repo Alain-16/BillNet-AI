@@ -101,7 +101,7 @@ class IntegrationConnection(UUIDModel,TimeStampedModel,CompanyOwnedModel):
     status = models.CharField(max_length=30,choices=ConnectionStatus.choices,default=ConnectionStatus.DISCONNECTED)
     scopes = models.JSONField(default=list)
 
-    token_secret_ref = models.CharField(max_length=255,blank=True)
+    encrypted_secret_ref = models.TextField(blank=True)
     token_expires_at = models.DateTimeField(null=True,blank=True)
 
     sync_cursor = models.CharField(max_length=255, blank=True)
