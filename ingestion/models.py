@@ -27,7 +27,7 @@ class SourceMessage(UUIDModel, TimeStampedModel,CompanyOwnedModel):
     class Meta:
         constraints =[
             models.UniqueConstraint(
-                fields=["company","provider","external_id"],
+                fields=["company","provider_message_id"],
                 name="uniq_sourcemsg_company_provider_extid",
             ),
         ]

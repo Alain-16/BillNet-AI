@@ -1,5 +1,4 @@
 from django.db import models
-from googleapiclient import model
 from common.enums import CompanyStatus, UserRole,Provider,ConnectionStatus
 from common.models import UUIDModel, TimeStampedModel,CompanyOwnedModel
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin

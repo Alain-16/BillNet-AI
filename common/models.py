@@ -36,8 +36,8 @@ class CompanyOwnedModel(models.Model):
     class Meta:
         abstract = True
 
-    def money_field(**kwargs):
+def money_field(**kwargs):
 
-        return models.DecimalField(max_digits=10, decimal_places=2, **kwargs)
+    return models.DecimalField(max_digits=10, decimal_places=2, **kwargs)
 
 
