@@ -11,3 +11,6 @@ DATABASES ={
         'PORT': int(config('DB_PORT', default=5432))
     }
 }
+
+CELERY_TASK_ALWAYS_EAGER = True
+

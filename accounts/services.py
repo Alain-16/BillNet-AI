@@ -62,7 +62,7 @@ def get_valid_access_token(conn: IntegrationConnection) -> str:
         new = get_provider(conn.provider).refresh(data["refresh_token"])
         _store_tokens(conn, new)
         conn.status = ConnectionStatus.CONNECTED
-        conn.save(update_fields=["encrypted_tokens", "token_expires_at","status","updated_at"])
+        conn.save(update_fields=["encrypted_secret_ref", "token_expires_at","status","updated_at"])
         return new.access_token
     return data["access_token"]
 
@@ -117,6 +117,6 @@ def revoke_integration(*, conn: IntegrationConnection,actor) -> IntegrationConne
     conn.disconnected_at = timezone.now()
     conn.encrypted_secret_ref = ""
     conn.token_expires_at = None
-    conn.save(update_fields=["status","disconnected_at","encrypted_tokens","token_expires_at","updated_at"])
-    record_event(company=conn.company,event_type=AuditEventType.INTEGRATION_REVOKED,actor_type=AuditActorType.USER,actor_id=actor.id,payload={"provider":conn.provider})
+    conn.save(update_fields=["status","disconnected_at","encrypted_secret_ref","token_expires_at","updated_at"])
+    record_event(company=conn.company,event_type=AuditEventType.INTEGRATION_REVOKED,aggregate_type="IntegrationConnection",aggregate_id=conn.id,actor_type=AuditActorType.USER,actor_id=actor.id,payload={"provider":conn.provider})
     return conn

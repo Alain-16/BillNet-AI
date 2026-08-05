@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 from cryptography.fernet import Fernet
-from django.contrib import settings
+from django.conf import settings
 
 
 class TokenCipher(Protocol):
