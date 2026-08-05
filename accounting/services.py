@@ -8,7 +8,7 @@ from accounting.models import AccountingReference
 from common.enums import (
     AccountingRefType, AuditEventType, ConnectionStatus, Provider,
 )
-from operations.service import record_event
+from operations.services import record_event
 
 
 @transaction.atomic

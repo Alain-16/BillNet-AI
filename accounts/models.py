@@ -85,7 +85,7 @@ class Company(UUIDModel, TimeStampedModel):
     timezone = models.CharField(max_length=100, default="America/vancouver")
     auto_post_enabled = models.BooleanField(default=False)
 
-    tax_codes = models.JSONField(default=list)
+    tax_codes = models.JSONField(default=list, blank=True)
 
     class Meta:
         verbose_name_plural = "companies"
@@ -110,6 +110,7 @@ class IntegrationConnection(UUIDModel,TimeStampedModel,CompanyOwnedModel):
 
     connected_at = models.DateTimeField(null=True,blank=True)
     disconnected_at = models.DateTimeField(null=True,blank=True)
+    last_error = models.JSONField(default=dict, blank=True)   # redacted sync/connect failure detail
 
     class Meta:
         constraints = [

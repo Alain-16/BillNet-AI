@@ -13,7 +13,7 @@ class GoogleProvider(OAuth2Provider):
     def __init__(self):
         self.client_id = settings.GOOGLE_CLIENT_ID
         self.client_secret = settings.GOOGLE_CLIENT_SECRET
-        self.redirect_url = settings.GOOGLE_REDIRECT_URI
+        self.redirect_uri = settings.GOOGLE_REDIRECT_URI
         self.scopes = settings.GOOGLE_OAUTH_SCOPES
 
 

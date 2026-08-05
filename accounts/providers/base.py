@@ -35,7 +35,7 @@ class OAuth2Provider(ABC):
     token_url: str
     client_id: str
     client_secret: str
-    redirect_url: str
+    redirect_uri: str
     scopes: str
     token_uses_basic_auth: bool = False
 
@@ -43,7 +43,7 @@ class OAuth2Provider(ABC):
     def authorization_url(self,state: str) -> str:
         params ={
             "client_id": self.client_id,
-            "redirect_url": self.redirect_url,
+            "redirect_uri": self.redirect_uri,
             "response_type": "code",
             "scope": self.scopes,
             "state": state,
