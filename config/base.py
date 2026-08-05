@@ -25,6 +25,32 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY',default='super-secret-key')
+TOKEN_ENCRYPTION_KEY= config("TOKEN_ENCRYPTION_KEY")
+
+GOOGLE_CLIENT_ID=  config("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = config("GOOGLE_CLIENT_SECRET", default="")
+GOOGLE_REDIRECT_URI = config("GOOGLE_REDIRECT_URI",
+                             default="http://localhost:8000/api/v1/integrations/gmail/callback")
+GOOGLE_OAUTH_SCOPES = config("GOOGLE_OAUTH_SCOPES",
+                             default="https://www.googleapis.com/auth/gmail.readonly")
+
+# Intuit / QuickBooks Online OAuth (sandbox)
+INTUIT_CLIENT_ID = config("INTUIT_CLIENT_ID", default="")
+INTUIT_CLIENT_SECRET = config("INTUIT_CLIENT_SECRET", default="")
+INTUIT_REDIRECT_URI = config("INTUIT_REDIRECT_URI",
+                             default="http://localhost:8000/api/v1/integrations/quickbooks/callback")
+INTUIT_SCOPES = config("INTUIT_SCOPES", default="com.intuit.quickbooks.accounting")
+INTUIT_ENVIRONMENT = config("INTUIT_ENVIRONMENT", default="sandbox")
+QBO_API_BASE = ("https://sandbox-quickbooks.api.intuit.com"
+                if INTUIT_ENVIRONMENT == "sandbox"
+                else "https://quickbooks.api.intuit.com")
+QBO_MINOR_VERSION = config("QBO_MINOR_VERSION", default="73")  # pin explicitly (Dev Guide 3.e)
+
+# Celery: Redis broker, NO result backend (Dev Guide 3.c). REMOVE the existing
+# CELERY_RESULT_BACKEND line and replace the celery block with:
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_DEFAULT_QUEUE = "default"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
