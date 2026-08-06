@@ -162,6 +162,10 @@ class AuditEventType(models.TextChoices):
     INTEGRATION_CONNECTED = "INTEGRATION_CONNECTED", "Integration connected"
     INTEGRATION_REVOKED = "INTEGRATION_REVOKED", "Integration revoked"
     REFERENCE_SYNCED = "REFERENCE_SYNCED", "Reference data synced"
+    PROJECT_CREATED = "PROJECT_CREATED", "Project created"
+    PROJECT_UPDATED = "PROJECT_UPDATED", "Project updated"
+    PROJECT_CLOSED = "PROJECT_CLOSED", "Project closed"
+    PROJECT_LINKED = "PROJECT_LINKED", "Project linked to QBO customer"
 
 
 class ExceptionSeverity(models.TextChoices):
