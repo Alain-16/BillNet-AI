@@ -24,7 +24,7 @@ class ExtractedFieldDTO:
     def to_json(self) -> dict:
         return {
             "raw_value": self.raw_value,
-            "normalized_value": (str(self.normalized_value) if isinstance(self.self.normalized_value, Decimal) else self.normalized_value),
+            "normalized_value": (str(self.normalized_value) if isinstance(self.normalized_value, Decimal) else self.normalized_value),
             "confidence": str(self.confidence) if self.confidence is not None else None,
             "method": self.method,
             "source": self.source,
@@ -47,7 +47,7 @@ class ExtractionDTO:
 
 
     def fields_json(self) -> dict:
-        return {name: f.to_json() for name, f in self.fields.items}
+        return {name: f.to_json() for name, f in self.fields.items()}
 
 
 class DocumentExtractor(ABC):

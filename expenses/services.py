@@ -386,11 +386,18 @@ def apply_corrections(*, expense: Expense, actor, changes: dict,
         if field in _DECIMAL_FIELDS and new is not None:
             new = Decimal(str(new))        # str() first: a float would poison it
         if field == "project":
-            new = (Project.objects.filter(company=expense.company, pk=new).first()
-                   if new else None)
-            if new is None and changes["project"]:
-                raise DomainError("Unknown project.", code="unknown_project",
-                                  field="project")
+            if not new:
+                new = None
+            else:
+
+                pk= getattr(new, "pk", new)
+
+                new = Project.objects.filter(company=expense.company, pk=pk).first()
+
+                if new is None:
+                    raise DomainError("Unknown project.", code="unknown_project", field="project")
+                
+               
         old = getattr(expense, field)
         if old != new:
             setattr(expense, field, new)
