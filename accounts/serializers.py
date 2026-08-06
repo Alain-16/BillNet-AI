@@ -6,7 +6,7 @@ from accounts.models import Company, IntegrationConnection, User
 from common.enums import ConnectionStatus
 
 class CompanySerializer(serializers.ModelSerializer):
-    class meta:
+    class Meta:
         model = Company
         fields = ["id","name","currency","timezone","status",
                   "auto_post_enabled","tax_codes","created_at","updated_at"]

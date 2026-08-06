@@ -11,7 +11,7 @@ from accounts.providers import get_provider
 from accounts.providers.base import OAuthTokens
 from common.crypto import get_token_cipher
 from common.enums import AuditActorType, AuditEventType, ConnectionStatus
-from operations.service import record_event
+from operations.services import record_event
 
 
 BC_TAX_CODES = [
