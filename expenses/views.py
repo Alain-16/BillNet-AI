@@ -6,13 +6,13 @@ from rest_framework.views import APIView
 
 from accounting.models import AccountingReference
 from accounts.permissions import IsCompanyMember, IsOwner
-from expenses.models import Project
+from expenses.models import Project, Expense
 from expenses.serializers import (
-    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,
+    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,ExpenseListSerializer,ExpenseDetailSerializer,ExpenseCorrectionSerializer
 )
 from expenses.services import (
     close_project, create_project, link_qbo_customer, projects_active_on,
-    update_project,
+    update_project,apply_corrections
 )
 
 
@@ -113,3 +113,37 @@ class ProjectLinkCustomerView(APIView):
         project = link_qbo_customer(project=project, actor=request.user,
                                     reference=reference)
         return Response(ProjectSerializer(project).data)
+
+
+
+class ExpenseListView(APIView):
+    permission_classes = [IsAuthenticated, IsCompanyMember]
+
+    def get(self, request):
+        gs = (Expense.objects.filter(company=request.user.company).select_related("project","source_document").order_by("-created_at"))
+        state = request.query_params.get("state")
+        if state:
+            gs = gs.filter(state=state.upper())
+        return Response(ExpenseListSerializer(gs,many=True).data)
+
+class ExpenseDetailView(APIView):
+    permission_classes = [IsAuthenticated,IsCompanyMember]
+
+    def _get(self,request,pk):
+        return get_object_or_404(
+            Expense.objects.select_related("source_document","interpretation","project"),
+            pk=pk, company=request.user.company
+        )
+
+    def get(self, request, pk):
+        return Response(ExpenseDetailSerializer(self._get(request, pk)).data)
+
+    def patch(self, request, pk):
+        expense = self._get(request,pk)
+        s = ExpenseCorrectionSerializer(expense,data=request.data,partial=True)
+        s.is_valid(raise_exception=True)
+        data= dict(s.validated_data)
+        reason = data.pop("reason","")
+        version = data.pop("version", None)
+        expense = apply_corrections(expense=expense,actor=request.user,changes=data, expected_version=version,reason=reason)
+        return Response(ExpenseDetailSerializer(expense).data)

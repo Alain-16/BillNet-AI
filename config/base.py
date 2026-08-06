@@ -15,6 +15,7 @@ from decouple import config
 
 import secrets
 import os
+from decimal import Decimal
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -51,6 +52,16 @@ QBO_MINOR_VERSION = config("QBO_MINOR_VERSION", default="73")  # pin explicitly 
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = None
 CELERY_TASK_DEFAULT_QUEUE = "default"
+
+OBJECT_STORAGE_ROOT = config("OBJECT_STORAGE_ROOT",
+                             default=str(BASE_DIR / "var" / "objects"))
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+
+MALWARE_SCAN_ENABLED = config("MALWARE_SCAN_ENABLED", default=False, cast=bool)
+MONEY_ROUNDING_TOLERANCE = Decimal("0.02")
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

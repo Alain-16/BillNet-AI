@@ -7,4 +7,6 @@ urlpatterns = [
     path("projects/<uuid:pk>", v.ProjectDetailView.as_view()),
     path("projects/<uuid:pk>/close", v.ProjectCloseView.as_view()),
     path("projects/<uuid:pk>/link-customer", v.ProjectLinkCustomerView.as_view()),
+    path("expenses",v.ExpenseListView.as_view()),
+    path("expenses/<uuid:pk>",v.ExpenseDetailView.as_view()),
 ]
