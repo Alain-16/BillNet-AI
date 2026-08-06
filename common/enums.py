@@ -166,6 +166,8 @@ class AuditEventType(models.TextChoices):
     PROJECT_UPDATED = "PROJECT_UPDATED", "Project updated"
     PROJECT_CLOSED = "PROJECT_CLOSED", "Project closed"
     PROJECT_LINKED = "PROJECT_LINKED", "Project linked to QBO customer"
+    VALIDATION = "VALIDATION", "Validation run"
+    STATE_CHANGED = "STATE_CHANGED", "Expense state changed"
 
 
 class ExceptionSeverity(models.TextChoices):
