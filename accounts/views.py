@@ -15,8 +15,19 @@ from accounts.services import (
     complete_oauth, consume_oauth_state, revoke_integration, start_oauth,
     update_company_config,
 )
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class CsrfCookieView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self,request):
+        return Response({"detail":"CSRF cookie set"})
 
 
+
+@method_decorator(ensure_csrf_cookie,name="dispatch")
 class LoginView(APIView):
     permission_classes = [AllowAny]
 

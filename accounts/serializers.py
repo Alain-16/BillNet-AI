@@ -36,7 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LoginSerializer(serializers.ModelSerializer):
+class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(style={"input_type":"password"}, trim_whitespace=False)
 
