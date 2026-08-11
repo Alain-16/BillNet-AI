@@ -292,22 +292,33 @@ def create_expense_from_interpretation(*, interpretation: DocumentInterpretation
 
     return expense
 
+def _human_corrected_fields(expense) -> set[str]:
+    """Columns a person has explicitly changed. The audit trail already records
+    this -- CORRECTION events carry payload["changes"] keyed by column name --
+    so there is no need for a second source of truth on the model."""
+    from operations.models import AuditEvent
+    events = AuditEvent.objects.filter(
+        company=expense.company, aggregate_type="Expense",
+        aggregate_id=str(expense.id), event_type=AuditEventType.CORRECTION,
+    ).values_list("payload", flat=True)
+    corrected: set[str] = set()
+    for payload in events:
+        corrected.update((payload or {}).get("changes", {}).keys())
+    return corrected
 
 def apply_interpretation_fields(expense: Expense) -> Expense:
-    """Copy parsed values onto the Expense columns.
-
-    NEVER overwrites a value a human already corrected: if the field differs
-    from what the previous extraction produced, the human wins. That is what
-    makes re-extraction safe after a correction.
-    """
+  
     interpretation = expense.interpretation
     if interpretation is None or interpretation.extraction_status != ExtractionStatus.COMPLETED:
         return expense                     # ABSTAINED/FAILED -> leave blank for manual entry
 
+    protected = _human_corrected_fields(expense)
     values = fields_to_expense_values(interpretation.fields or {})
     changed = []
     for column, value in values.items():
-        if getattr(expense, column) in (None, "", [], Decimal("0")):
+        if column in protected:
+            continue
+        if getattr(expense, column) != value:
             setattr(expense, column, value)
             changed.append(column)
     if changed:

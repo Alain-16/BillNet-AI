@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from common.enums import ExtractionMethod, PaymentType
 from documents.extractors.base import ExtractedFieldDTO
+from collections import Counter
 
 
 _MONEY = re.compile(r"\$?\s*(-?\d[\d,\s]*\.\d{2})\b")
@@ -46,6 +47,19 @@ _PAYMENT_HINTS = [
      PaymentType.BANK),
 ]
 
+_SPACE_WORD = re.compile(r"\b(?:[A-Za-z]\s){2,}[A-Za-z]\b")
+
+_RATE = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*%")
+
+def _despace(line: str) -> str:
+    return _SPACE_WORD.sub(lambda m: m.group(0).replace(" ", ""), line)
+
+
+def _is_amount_only(line: str) -> str:
+    return not _MONEY.sub("", line).strip(" $\t")
+
+
+
 
 def parse_money(token: str) -> Decimal | None:
     """Decimal from a string, ALWAYS. Never float -- Invariant #2. Decimal(str)
@@ -61,23 +75,37 @@ def _amounts_on(line: str) -> list[Decimal]:
             if d is not None]
 
 
-def _find_labeled_amount(lines, label, *, exclude=None):
-    """Scan bottom-up -- totals live at the foot of a receipt, and an early
-    'TOTAL SAVINGS' line should lose to the real total below it.
+def _find_labeled_amount(lines, label, *, exclude=None, lookahead=2):
+    """Scan bottom-up -- totals live at the foot of a receipt.
 
-    Takes the RIGHTMOST amount on the matching line: receipts put the label on
-    the left and the amount in a right-hand column.
+    Handles BOTH layouts:
+      same-line    "TOTAL            40.30"
+      two-column   "T O T A L" / "$  218.25"     <- thermal receipts
     """
     for idx in range(len(lines) - 1, -1, -1):
-        line = lines[idx]
-        if not label.search(line):
+        flat = _despace(lines[idx])
+        if not label.search(flat):
             continue
-        if exclude and exclude.search(line):
+        if exclude and exclude.search(flat):
             continue
-        amounts = _amounts_on(line)
+
+        amounts = _amounts_on(lines[idx])
         if amounts:
-            return amounts[-1], idx, line.strip()
-    return None, None, None
+            return amounts[-1], idx, lines[idx].strip()
+
+        # No amount beside the label -- look ahead for an amount-only line.
+        for j in range(idx + 1, min(idx + 1 + lookahead, len(lines))):
+            nxt = lines[j]
+            if not nxt.strip():
+                continue
+            if _is_amount_only(nxt):
+                amounts = _amounts_on(nxt)
+                if amounts:
+                    return (amounts[-1], j,
+                            f"{lines[idx].strip()} {nxt.strip()}")
+            break        # a real non-amount line ends the label/value pairing
+
+    return None, None, None  
 
 
 def _parse_date(text: str):
@@ -135,21 +163,56 @@ def _parse_date(text: str):
 
     return None, "", None, {"reason": "no_date_found"}
 
+_VENDOR_NOISE = re.compile(
+    r"(?:\bPHONE\b|\bTEL\b|\bFAX\b|\bGST\s*#|\bHST\s*#|\bBN\s*#|"
+    r"\bSTORE\s*(?:HRS|HOURS|#)|\bREG\s*#|\bTRANS\s*#|\bDATE\b|"
+    r"\bOPERATOR\b|\bCASHIER\b|\bTERMINAL\b|\bINVOICE\b|\bRECEIPT\b|"
+    r"WWW\.|HTTP|\.COM|@)", re.I)
 
-def _find_vendor(lines):
-    """Weak heuristic: the store name is usually the first real line of a
-    receipt. Confidence is deliberately low -- slice 3's vendor matcher is what
-    turns this raw string into a canonical vendor."""
-    for idx, line in enumerate(lines[:6]):
-        s = line.strip()
-        if not (3 <= len(s) <= 60):
-            continue
-        if _MONEY.search(s) or _DATE_ISO.search(s) or _DATE_NUMERIC.search(s):
-            continue
-        if s.replace(" ", "").isdigit():
-            continue
-        return s, idx
+
+
+def _find_vendor(lines, *, window=12):
+    """The store name is usually the first real line of a receipt -- but only
+    after skipping watermarks, contact details and register metadata.
+
+    Confidence stays LOW on purpose. However good this heuristic gets, a raw
+    string off a receipt is not a canonical vendor; slice 3's matcher decides
+    that. This only has to give the reviewer a sensible starting value.
+    """
+    from collections import Counter
+    counts = Counter(ln.strip().upper() for ln in lines if ln.strip())
+
+    def candidates(skip_repeats: bool):
+        for idx, line in enumerate(lines[:window]):
+            s = line.strip()
+            if not (3 <= len(s) <= 60):
+                continue
+            # A line repeated three or more times is a watermark or a running
+            # header ("SAMPLE - NOT VALID" printed five times), not a vendor.
+            if skip_repeats and counts[s.upper()] >= 3:
+                continue
+            if _MONEY.search(s) or _DATE_ISO.search(s) or _DATE_NUMERIC.search(s):
+                continue
+            if _VENDOR_NOISE.search(s):
+                continue
+            # Reject separator rules, phone numbers and part codes: a real
+            # is mostly letters.
+            letters = sum(ch.isalpha() for ch in s)
+            if letters < 3 or letters * 2 < len(s.replace(" ", "")):
+                continue
+            yield s, idx
+
+    # Strict pass first; fall back to allowing repeats rather than returnin
+    # nothing (a receipt whose every line repeats still needs a best guess)
+    for skip_repeats in (True, False):
+        for value, idx in candidates(skip_repeats):
+            return value, idx
     return None, None
+
+
+    
+
+
 
 
 def parse_receipt_text(text: str, *,
@@ -187,6 +250,10 @@ def parse_receipt_text(text: str, *,
     for code, pattern in _LABEL_TAX.items():
         amount, idx, raw = _find_labeled_amount(lines, pattern)
         if amount is not None:
+            extra = {"tax_code": code}
+            m = _RATE.search(raw or "")
+            if m:
+                extra["rate_printed"] = str(Decimal(m.group(1)) / 100)
             put(f"tax_{code.lower()}", raw, amount, Decimal("0.85"), idx,
                 {"tax_code": code})
 
