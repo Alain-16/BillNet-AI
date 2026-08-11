@@ -196,6 +196,47 @@ def check_extraction_usable(expense) -> list[Check]:
     return [Check(code="EXTRACTION_PRESENT", severity=Severity.ERROR, passed=True,
                   message="Extraction completed.")]
 
+def check_tax_rates(expense) -> list[Check]:
+    """Cross-check the rate PRINTED on the receipt against the company's
+    configured profile, and against the subtotal.
+
+    This never computes the tax -- the amount stays whatever the receipt says
+    (Dev Guide 3.f). It only asks whether the receipt is internally consistent.
+    Both checks are WARNINGs: a partly non-taxable basket makes the rate math
+    disagree legitimately.
+    """
+    configured = {tc["label"].upper(): Decimal(str(tc.get("rate") or "0"))
+                  for tc in (expense.company.tax_codes or [])}
+    checks = []
+    for entry in (expense.tax_breakdown or []):
+        code = str(entry.get("code", "")).upper()
+        printed_raw = entry.get("rate")
+        if not printed_raw:
+            continue                        # receipt did not print a rate
+        printed = Decimal(str(printed_raw))
+
+        expected = configured.get(code)
+        if expected and printed != expected:
+            checks.append(Check(
+                code=f"TAX_RATE_UNEXPECTED_{code}", severity=Severity.WARNING,
+                passed=False, expected=str(expected), actual=str(printed),
+                message=f"The receipt shows {code} at {printed * 100}%, but this "
+                        f"company is configured for {expected * 100}%. The purchase "
+                        f"may have been made in another province."))
+
+        if expense.subtotal:
+            implied = (expense.subtotal * printed).quantize(Decimal("0.01"))
+            actual = Decimal(str(entry["amount"]))
+            if abs(implied - actual) > _tolerance():
+                checks.append(Check(
+                    code=f"TAX_RATE_BASE_{code}", severity=Severity.WARNING,
+                    passed=False, expected=str(implied), actual=str(actual),
+                    message=f"{code} of {actual} is not {printed * 100}% of the "
+                            f"subtotal ({implied} expected). This is normal when "
+                            f"only some items are taxable -- confirm against the "
+                            f"receipt."))
+    return checks
+
 
 ALL_CHECKS = (
     check_extraction_usable,

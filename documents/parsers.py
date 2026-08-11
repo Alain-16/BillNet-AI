@@ -355,7 +355,7 @@ def fields_to_expense_values(fields: dict) -> dict:
             continue
         code = field.get("source", {}).get("tax_code") or key[4:].upper()
         amount = Decimal(str(field["normalized_value"]))
-        breakdown.append({"code": code, "amount": str(amount)})
+        breakdown.append({"code": code, "amount": str(amount), "rate": field.get("source", {}).get("rate_printed", "")})
         tax_total += amount
     if breakdown:
         values["tax_breakdown"] = breakdown
