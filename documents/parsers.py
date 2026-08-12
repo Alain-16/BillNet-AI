@@ -10,16 +10,26 @@ from collections import Counter
 from django.conf import settings
 
 
-
+_O = r"[O0Q]"          # O <-> zero, Q
+_L = r"[L1I|\]!]"      # l <-> one, I, pipe, bracket, bang   <- the common one
+_S = r"[S5$]"
+_A = r"[A4@]"
+_T = r"[T7]"
+_G = r"[G6]"
+_B = r"[B8]"
+_U = r"[UV]"
 
 _MONEY = re.compile(r"\$?\s*(-?\d[\d,\s]*\.\d{2})\b")
 
-_LABEL_TOTAL = re.compile(r"\b(?:GRAND\s+TOTAL|TOTAL\s+DUE|AMOUNT\s+DUE|TOTAL)\b", re.I)
-_LABEL_SUBTOTAL = re.compile(r"\bSUB[\s\-]?TOTAL\b", re.I)
+_LABEL_TOTAL = re.compile(rf"{_T}{_O}{_T}{_A}{_L}(?![A-Za-z])", re.I)
+_LABEL_SUBTOTAL = re.compile(
+    rf"{_S}{_U}{_B}[\s\-]?{_T}{_O}{_T}{_A}{_L}(?![A-Za-z])", re.I)
 _LABEL_TAX = {
-    "GST": re.compile(r"\bG\.?S\.?T\.?(?:\s*/\s*H\.?S\.?T\.?)?\b", re.I),
-    "PST": re.compile(r"\bP\.?S\.?T\.?\b|\bPROV(?:INCIAL)?\s+TAX\b", re.I),
-    "HST": re.compile(r"\bH\.?S\.?T\.?\b", re.I),
+    "GST": re.compile(
+        rf"\b{_G}\.?{_S}\.?{_T}\.?(?:\s*/\s*H\.?{_S}\.?{_T}\.?)?(?![A-Za-z])", re.I),
+    "PST": re.compile(
+        rf"\bP\.?{_S}\.?{_T}\.?(?![A-Za-z])|\bPR{_O}V(?:INCIA{_L})?\s+{_T}{_A}X\b", re.I),
+    "HST": re.compile(rf"\bH\.?{_S}\.?{_T}\.?(?![A-Za-z])", re.I),
 }
 _LABEL_RECEIPT_NO = re.compile(
     r"\b(?:INVOICE|RECEIPT|ORDER|TRANSACTION|TRANS|REF(?:ERENCE)?|BILL)\b"
@@ -43,12 +53,16 @@ _DATE_MONTH_FIRST = re.compile(
 _DATE_DAY_FIRST = re.compile(
     r"\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})\b")
 
+_DEPT_PREFIX = re.compile(r"^\d{1,3}\s*[-–]\s*")
+
 _PAYMENT_HINTS = [
     (re.compile(r"\b(?:VISA|MASTERCARD|MASTER\s?CARD|AMEX|AMERICAN\s+EXPRESS|"
                 r"CREDIT|CREDIT\s+CARD)\b", re.I), PaymentType.CREDIT_CARD),
     (re.compile(r"\b(?:DEBIT|INTERAC|BANK|CHEQUE|CHECK|E-?TRANSFER)\b", re.I),
      PaymentType.BANK),
 ]
+
+_TRAILING_SKU = re.compile(r"\s+\d{4,}$")
 
 _SPACE_WORD = re.compile(r"\b(?:[A-Za-z]\s){2,}[A-Za-z]\b")
 
@@ -92,7 +106,17 @@ def _despace(line: str) -> str:
 def _is_amount_only(line: str) -> bool:
     return not _MONEY.sub("", line).strip(" $\t")
 
+def _item_description(text: str) -> str:
+    """Strip everything that surrounds a real description on a receipt line.
 
+    Order matters: leaders come off before the trailing SKU, so
+    "WIDGET 948976 ......" loses the dots first and the SKU second.
+    """
+    desc = _DEPT_PREFIX.sub("", text.strip())
+    desc = _DEPT_CODE.sub("", desc)
+    desc = _LEADERS.sub("", desc).strip()
+    desc = _TRAILING_SKU.sub("", desc)
+    return desc.strip()
 
 
 def parse_money(token: str) -> Decimal | None:

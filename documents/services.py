@@ -14,6 +14,7 @@ from common.storage import build_object_key, get_object_storage, sha256_bytes
 from documents.extractors import get_extractor
 from documents.models import DocumentInterpretation, SourceDocument
 from operations.services import record_event
+from documents.extractors import get_extraction_chain
 
 
 ALLOWED_TYPES: dict[str, set[str]] = {
@@ -132,9 +133,17 @@ def run_extraction(*, document: SourceDocument, actor=None) -> DocumentInterpret
     next_version = (last.version + 1) if last else 1
 
     data = get_object_storage().get(document.object_key)
-    extractor = get_extractor(mime_type=document.mime_type, filename=document.filename)
-    result = extractor.extract(data, mime_type=document.mime_type,
-                               filename=document.filename)
+    result = None
+    attempts: list[dict] = []
+    for extractor in get_extraction_chain(mime_type=document.mime_type,filename=document.filename):
+        result = extractor.extract(data,mime_type=document.mime_type,filename=document.filename)
+        attempts.append({"method": result.method, "status": result.status, "reason": (result.evidence or {}).get("reason", "")})
+
+        if result.completed:
+            break
+
+        if result.status == ExtractionStatus.FAILED:
+            break
 
    
     if result.completed and result.text:
@@ -163,6 +172,7 @@ def run_extraction(*, document: SourceDocument, actor=None) -> DocumentInterpret
         payload={"document_id": str(document.id), "status": result.status,
                  "method": result.method, "latency_ms": result.latency_ms,
                  "field_count": len(result.fields),
+                 "attempts": attempts,
                  "reason": result.evidence.get("reason", "")},
     )
     return interpretation
