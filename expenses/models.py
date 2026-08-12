@@ -125,6 +125,7 @@ class Expense(UUIDModel, CompanyOwnedModel, TimeStampedModel, VersionedModel):
     policy_outcome = models.CharField(                                # promoted for querying/filters
         max_length=20, choices=PolicyOutcome.choices, blank=True,
     )
+    line_items = models.JSONField(default=list,blank=True)
 
     class Meta:
         indexes = [

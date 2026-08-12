@@ -243,6 +243,7 @@ ALL_CHECKS = (
     check_required_fields,
     check_tax_arithmetic,
     check_tax_codes_supported,
+    check_tax_rates,
     check_currency,
     check_date_sane,
     check_ambiguous_date,

@@ -31,7 +31,7 @@ _WHITESPACE = re.compile(r"\s+")
 CORRECTABLE_FIELDS = {
     "vendor_raw_name", "receipt_number", "transaction_date", "currency",
     "subtotal", "tax_total", "total", "tax_breakdown", "card_last_four",
-    "payment_type", "memo", "project",
+    "payment_type", "memo", "project","line_items"
 }
 # Amounts must arrive as Decimal, never float (Invariant #2).
 _DECIMAL_FIELDS = {"subtotal", "tax_total", "total"}

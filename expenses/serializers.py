@@ -3,8 +3,9 @@ import zoneinfo
 from rest_framework import serializers
 
 from expenses.models import Project
-from documents.serializers import InterpretationSerializer, SourceDocumentSerializer
+from common.enums import ExtractionStatus
 from expenses.models import Expense
+from documents.models import SourceDocument
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -53,30 +54,60 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         return sum(1 for c in (obj.validations or []) if c.get("severity") == "ERROR" and not c.get("passed"))
 
 
-class ExpenseDetailSerializer(serializers.ModelSerializer):
-    source_document = SourceDocumentSerializer(read_only=True)
-    interpretation = InterpretationSerializer(read_only=True)
+class ReceiptDocumentSerializer(serializers.ModelSerializer):
+    extraction_status = serializers.SerializerMethodField()
+    extraction_method = serializers.SerializerMethodField()
+    extraction_note = serializers.SerializerMethodField()
     evidence_url = serializers.SerializerMethodField()
-    interpretation_history = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SourceDocument
+        fields = [
+            "id","filename", "mime_type", "byte_size", "sha256", "scan_status",
+            "extraction_status", "extraction_method", "extraction_note",
+            "evidence_url", "created_at",
+        ]
+        read_only_fields = fields
+
+    def _interpretation(self, obj):
+        return self.context.get("interpretation") or obj.interpretations.first()
+
+    def get_extraction_status(self,obj) -> str:
+        interpretation = self._interpretation(obj)
+        return interpretation.extraction_status if interpretation else ExtractionStatus.PENDING
+
+    def get_extraction_method(self,obj) -> str:
+        interpretation = self._interpretation(obj)
+        return interpretation.extraction_method if interpretation else ""
+
+    def get_extraction_note(self,obj) -> str:
+        interpretation = self._interpretation(obj)
+        return (interpretation.evidence or {}).get("detail", "") if interpretation else ""
+
+    def get_evidence_url(self,obj) -> str:
+        return f"/api/v1/documents/{obj.id}/content"
+
+  
+class ExtractedExpenseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Expense
         fields = [
-            "id","state","version","currency","subtotal","tax_total","total","tax_breakdown","transaction_date","vendor_raw_name","receipt_number",
-            "card_last_four","payment_type","memo","project","validations","source_document","interpretation","interpretation_history","evidence_url","created_at","updated_at"
-
+            "id", "state", "version",
+            # --- workflow doc 3, in order ---
+            "vendor_raw_name",                      # vendor
+            "transaction_date",                     # date
+            "line_items",                           # items
+            "subtotal",                             # subtotal
+            "tax_breakdown", "tax_total",           # taxes shown
+            "total",                                # total
+            "currency",                             # currency
+            "payment_type", "card_last_four",       # payment clues
+            # --- supporting ---
+            "receipt_number", "memo",
+            "created_at", "updated_at",
         ]
-
         read_only_fields = fields
-
-    def get_evidence_url(self, obj) -> str:
-        return f"/api/v1/documents/{obj.source_document_id}/content"
-
-    def get_interpretation_history(self, obj) -> list:
-        return [{"id": str(i.id), "version": i.version,
-                 "status": i.extraction_status, "method": i.extraction_method,
-                 "created_at": i.created_at}
-                for i in obj.source_document.interpretations.all()]
 
 
 class ExpenseCorrectionSerializer(serializers.ModelSerializer):
@@ -88,8 +119,34 @@ class ExpenseCorrectionSerializer(serializers.ModelSerializer):
         fields = [
                 "vendor_raw_name", "receipt_number", "transaction_date",
                   "currency", "subtotal", "tax_total", "total", "tax_breakdown",
-                  "card_last_four", "payment_type", "memo", "project",
+                  "card_last_four", "payment_type", "memo", "project","line_items",
                   "reason", "version"
         ]
         extra_kwargs = {f: {"required": False} for f in fields}
 
+
+def build_validation_block(expense) -> dict:
+
+    checks = expense.validations or []
+    errors = [c for c in checks if c.get("severity") == "ERROR" and not c.get("passed")]
+    warnings = [c for c in checks if c.get("severity") == "WARNING" and not c.get("passed")]
+
+    return {
+        "passed": not errors,
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+        "checks": checks
+    }
+
+
+def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
+
+    return {
+        **({"created": created} if created is not None else {}),
+        "document":ReceiptDocumentSerializer(
+            expense.source_document,
+            context={"interpretation": expense.interpretation},
+        ).data,
+        "expense" : ExtractedExpenseSerializer(expense).data,
+        "validation":build_validation_block(expense),
+    }

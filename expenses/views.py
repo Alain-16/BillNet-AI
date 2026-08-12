@@ -8,7 +8,7 @@ from accounting.models import AccountingReference
 from accounts.permissions import IsCompanyMember, IsOwner
 from expenses.models import Project, Expense
 from expenses.serializers import (
-    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,ExpenseListSerializer,ExpenseDetailSerializer,ExpenseCorrectionSerializer
+    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,ExpenseListSerializer,build_receipt_payload,ExpenseCorrectionSerializer
 )
 from expenses.services import (
     close_project, create_project, link_qbo_customer, projects_active_on,
@@ -136,7 +136,7 @@ class ExpenseDetailView(APIView):
         )
 
     def get(self, request, pk):
-        return Response(ExpenseDetailSerializer(self._get(request, pk)).data)
+        return Response(build_receipt_payload(self._get(request, pk)))
 
     def patch(self, request, pk):
         expense = self._get(request,pk)
@@ -146,4 +146,4 @@ class ExpenseDetailView(APIView):
         reason = data.pop("reason","")
         version = data.pop("version", None)
         expense = apply_corrections(expense=expense,actor=request.user,changes=data, expected_version=version,reason=reason)
-        return Response(ExpenseDetailSerializer(expense).data)
+        return Response(build_receipt_payload(expense))

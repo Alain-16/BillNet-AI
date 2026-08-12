@@ -14,9 +14,9 @@ from rest_framework.views import APIView
 from accounts.permissions import IsCompanyMember
 from common.storage import get_object_storage
 from documents.models import SourceDocument
-from documents.serializers import SourceDocumentSerializer, UploadSerializer
+from documents.serializers import UploadSerializer
 from documents.services import ingest_upload
-from expenses.serializers import ExpenseDetailSerializer
+from expenses.serializers import build_receipt_payload
 from expenses.services import process_document
 
 
@@ -37,12 +37,9 @@ class DocumentUploadView(APIView):
 
         expense = process_document(document=document, actor=request.user)
         return Response(
-            {
-                "created": created,
-                "document": SourceDocumentSerializer(document).data,
-                "expense": ExpenseDetailSerializer(expense).data,
-            }, 
-            status=http.HTTP_201_CREATED if created else http.HTTP_200_OK,
+            
+                build_receipt_payload(expense, created=created),
+                status=http.HTTP_201_CREATED if created else http.HTTP_200_OK,
         )
 
 
