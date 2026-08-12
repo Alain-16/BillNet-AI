@@ -19,7 +19,7 @@ _G = r"[G6]"
 _B = r"[B8]"
 _U = r"[UV]"
 
-_MONEY = re.compile(r"\$?\s*(-?\d[\d,\s]*\.\d{2})\b")
+_MONEY = re.compile(r"\$?\s*(-?\d[\d,]*\.\d{2})\b")
 
 _LABEL_TOTAL = re.compile(rf"{_T}{_O}{_T}{_A}{_L}(?![A-Za-z])", re.I)
 _LABEL_SUBTOTAL = re.compile(

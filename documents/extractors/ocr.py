@@ -4,7 +4,7 @@ import time
 
 from common.enums import ExtractionMethod, ExtractionStatus
 from documents.extractors.base import DocumentExtractor, ExtractionDTO
-
+from PIL import Image, ImageOps
 
 MIN_TEXT_CHARS = 50
 MIN_MEAN_CONFIDENCE = 45.0
@@ -100,15 +100,23 @@ class TesseractExtractor(DocumentExtractor):
 
     def _load_image(self, data: bytes, *, mime_type: str):
         """Returns (PIL.Image | None, note). Two input shapes, one output."""
-        from PIL import Image
-
+        
         if mime_type in ("image/jpeg", "image/png"):
             try:
                 return Image.open(io.BytesIO(data)), "uploaded_image"
             except Exception as exc:
                 return None, f"unreadable_image: {str(exc)[:120]}"
+            return self._normalize(image), "uploaded_image"
 
-        return self._largest_pdf_image(data)
+        image, note = self._largest_pdf_image(data)
+        if image is None:
+            return None, note
+        return self._normalize(image), note
+
+        
+    @staticmethod
+    def _normalize(image):
+        return ImageOps.exif_transpose(image).convert("RGB")
 
     def _largest_pdf_image(self, data: bytes):
         """Pull the page image out of an image-only PDF.
