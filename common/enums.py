@@ -189,3 +189,24 @@ class ExceptionStatus(models.TextChoices):
 class SourceDocumentKind(models.TextChoices):
     ATTACHMENT = "ATTACHMENT", "Attachment"
     EMAIL_BODY = "EMAIL_BODY", "Email body"
+
+class PurchaseStatus(models.TextChoices):
+    """Doc 11.3: voided and deleted Purchases are MARKED, never erased --
+    non-negotiable rule 14 (voids and deletions preserve audit history)."""
+    ACTIVE = "ACTIVE", "Active"
+    VOIDED = "VOIDED", "Voided"
+    DELETED = "DELETED", "Deleted"
+
+
+class SyncEntityType(models.TextChoices):
+    """One cursor per entity stream. Reference data and Purchases change at very
+    different rates, so they must not share a cursor."""
+    REFERENCE = "REFERENCE", "Reference data"
+    PURCHASE = "PURCHASE", "Purchase"
+
+
+class SyncStatus(models.TextChoices):
+    IDLE = "IDLE", "Idle"
+    RUNNING = "RUNNING", "Running"
+    HEALTHY = "HEALTHY", "Healthy"
+    FAILED = "FAILED", "Failed"

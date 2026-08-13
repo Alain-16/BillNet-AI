@@ -137,4 +137,17 @@ class IntegrationSyncView(APIView):
         return Response({"detail": "Sync started."}, status=status.HTTP_202_ACCEPTED)
 
 
+
+
+    
+
+
+
+
+
+
+
+
+
+
     
