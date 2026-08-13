@@ -40,6 +40,52 @@ RECOMMENDATION_SCHEMA_VERSION = "expense_recommendations.v1"
 RESOLVED_SCORE = Decimal("0.75")
 AMBIGUITY_GAP = Decimal("0.10")
 
+_WORD_SPLIT = re.compile(r"[^a-z0-9]+", re.I)
+
+ACCOUNT_KEYWORD_RULES = [
+    {
+        "key": "materials_supplies",
+        "labels": ["materials", "job supplies", "construction supplies"],
+        "keywords": [
+            "lumber", "wood", "plywood", "drywall", "cement", "concrete",
+            "paint", "primer", "pipe", "plumbing", "wire", "electrical",
+            "screws", "nails", "caulk", "adhesive", "insulation",
+        ],
+    },
+    {
+        "key": "tools_equipment",
+        "labels": ["tools", "equipment", "small tools"],
+        "keywords": [
+            "drill", "bit", "saw", "blade", "wrench", "hammer", "level",
+            "ladder", "tool", "grinder", "sander", "battery", "charger",
+        ],
+    },
+    {
+        "key": "safety_supplies",
+        "labels": ["safety", "safety supplies", "ppe"],
+        "keywords": [
+            "gloves", "goggles", "helmet", "hardhat", "mask", "respirator",
+            "vest", "earplugs", "safety", "ppe",
+        ],
+    },
+    {
+        "key": "fuel_vehicle",
+        "labels": ["fuel", "vehicle", "auto", "gas"],
+        "keywords": [
+            "fuel", "gas", "diesel", "petro", "shell", "chevron",
+            "parking", "toll", "car wash",
+        ],
+    },
+    {
+        "key": "office_supplies",
+        "labels": ["office", "office supplies"],
+        "keywords": [
+            "paper", "printer", "ink", "toner", "staples", "notebook",
+            "pen", "folder", "envelope",
+        ],
+    },
+]
+
 def normalize_code(code: str) -> str:
 
     if not code or not code.strip():
@@ -80,61 +126,6 @@ def _json_safe(value):
 
 def _decimal_score(value) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.0001"))
-
-def _candidate(
-    *,
-    object_type: str,
-    label: str,
-    score,
-    source: str,
-    object_id: str = "",
-    external_id: str = "",
-    evidence: dict | None = None,
-    action_required: str = "",
-    data: dict | None = None,
-) -> dict:
-
-    return {
-        "object_type": object_type,
-        "object_id": str(object_id or ""),
-        "external_id": str(external_id or ""),
-        "label": label,
-        "score": str(_decimal_score(score)),
-        "source": source,
-        "evidence": evidence or {},
-        "action_required": action_required,
-        "data": data or {},
-    }
-
-
-def _dedupe_candidates(candidates: list[dict]) -> list[dict]:
-
-    best: dict[tuple[str, str, str], dict] = {}
-
-    for candidate in candidates:
-        key = (
-            candidate["object_type"],
-            candidate.get("object_id") or "",
-            candidate.get("external_id") or "",
-        )
-        current = best.get(key)
-        if current is None:
-            best[key] = candidate
-            continue
-        if Decimal(candidate["score"]) > Decimal(current["score"]):
-            merged = dict(candidate)
-            merged["evidence"] = {
-                **(current.get("evidence") or {}),
-                **(candidate.get("evidence") or {}),
-            }
-            best[key] = merged
-
-    return sorted(
-        best.values(),
-        key=lambda row: Decimal(row["score"]),
-        reverse=True,
-    )
-
 
 
 # ---------- lifecycle ----------
@@ -502,3 +493,549 @@ def _audit_value(value):
     if isinstance(value, Project):
         return {"id": str(value.id), "code": value.code}
     return value
+
+#------------------ document metadata ----------------#
+
+def _candidate(
+    *,
+    object_type: str,
+    label: str,
+    score,
+    source: str,
+    object_id: str = "",
+    external_id: str = "",
+    evidence: dict | None = None,
+    action_required: str = "",
+    data: dict | None = None,
+) -> dict:
+
+    return {
+        "object_type": object_type,
+        "object_id": str(object_id or ""),
+        "external_id": str(external_id or ""),
+        "label": label,
+        "score": str(_decimal_score(score)),
+        "source": source,
+        "evidence": evidence or {},
+        "action_required": action_required,
+        "data": data or {},
+    }
+
+
+def _dedupe_candidates(candidates: list[dict]) -> list[dict]:
+
+    best: dict[tuple[str, str, str], dict] = {}
+
+    for candidate in candidates:
+        key = (
+            candidate["object_type"],
+            candidate.get("object_id") or "",
+            candidate.get("external_id") or "",
+        )
+        current = best.get(key)
+        if current is None:
+            best[key] = candidate
+            continue
+        if Decimal(candidate["score"]) > Decimal(current["score"]):
+            merged = dict(candidate)
+            merged["evidence"] = {
+                **(current.get("evidence") or {}),
+                **(candidate.get("evidence") or {}),
+            }
+            best[key] = merged
+
+    return sorted(
+        best.values(),
+        key=lambda row: Decimal(row["score"]),
+        reverse=True,
+    )
+
+def _recommendation_block(
+    *,
+    kind: str,
+    candidates: list[dict],
+    evidence: dict,
+    unresolved_reason: str,
+) -> dict:
+    """Turn ranked candidates into a final recommendation block.
+
+    Why:
+        Matching functions should only produce evidence and scores. This helper
+        applies the same conservative decision rule to every recommendation.
+    """
+    ranked = _dedupe_candidates(candidates)
+
+    if not ranked:
+        return {
+            "kind": kind,
+            "status": "unresolved",
+            "selected": None,
+            "candidates": [],
+            "reason": unresolved_reason,
+            "evidence": evidence,
+        }
+
+    top = ranked[0]
+    top_score = Decimal(top["score"])
+    second_score = Decimal(ranked[1]["score"]) if len(ranked) > 1 else Decimal("0")
+    close_second = second_score and (top_score - second_score) <= AMBIGUITY_GAP
+
+    if top_score < RESOLVED_SCORE:
+        status = "unresolved"
+        selected = None
+        reason = f"Best {kind} candidate is below the confidence threshold."
+    elif close_second:
+        status = "ambiguous"
+        selected = None
+        reason = f"Multiple {kind} candidates are close; reviewer must choose."
+    elif top.get("action_required"):
+        status = "review_required"
+        selected = top
+        reason = top["action_required"]
+    else:
+        status = "resolved"
+        selected = top
+        reason = f"Strong {kind} recommendation found."
+
+    return {
+        "kind": kind,
+        "status": status,
+        "selected": selected,
+        "candidates": ranked[:5],
+        "reason": reason,
+        "evidence": evidence,
+    }
+
+def _source_message(expense: Expense):
+    document = expense.source_document
+    return document.message if document and document.message_id else None
+
+def _line_item_text(expense: Expense):
+    parts: list[str] = []
+
+    for item in expense.line_items or []:
+        if isinstance(item, dict):
+            parts.append(str(item.get("description") or ""))
+        else:
+            parts.append(str(item))
+    return " ".join(p for p in parts if p).strip()
+
+def _collect_recommendation_evidence(expense: Expense) -> dict:
+    message = _source_message(expense)
+    email_subject = message.subject if message else ""
+    sender = message.sender if message else ""
+
+    line_items = _line_item_text(expense)
+    receipt_text = " ".join(
+        str(value or "")
+        for value in [
+            expense.vendor_raw_name,
+            expense.receipt_number,
+            expense.memo,
+            line_items,
+        ]
+    ).strip()
+
+    project_text = " ".join(
+        str(value or "")
+        for value in [email_subject, expense.memo, line_items, expense.vendor_raw_name]
+    ).strip()
+
+    account_text = " ".join(
+        str(value or "")
+        for value in [line_items, expense.memo, expense.vendor_raw_name, email_subject]
+    ).strip()
+
+    all_text = " ".join(
+        part
+        for part in [receipt_text, email_subject, sender]
+        if part
+    ).strip()
+
+    return {
+        "vendor_raw_name": expense.vendor_raw_name or "",
+        "email_subject": email_subject,
+        "sender": sender,
+        "line_item_text": line_items,
+        "receipt_text": receipt_text,
+        "project_text": project_text,
+        "account_text": account_text,
+        "all_text": all_text,
+        "card_last_four": expense.card_last_four or "",
+        "payment_type": expense.payment_type or "",
+    }
+
+
+def _tokens(text: str) -> set[str]:
+    return {token.lower() for token in _WORD_SPLIT.split(text or "") if token}
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    return bool(phrase and phrase.lower() in (text or "").lower())
+
+def _similarity(a: str, b: str) -> Decimal:
+    if not a or not b:
+        return Decimal("0")
+    return _decimal_score(fuzz.token_set_ratio(a, b) / 100)
+
+def _project_action_required(project: Project) -> str:
+    if project.status != ProjectStatus.ACTIVE:
+        return "Matched internal project is not active; reviewer must confirm."
+    if project.qbo_customer_id is None:
+        return "Matched internal project is not linked to a QuickBooks customer."
+    if not project.qbo_customer.active:
+        return "Matched project's QuickBooks customer is inactive."
+    return ""
+
+def _score_internal_project(project: Project, text: str) -> tuple[Decimal, dict]:
+    evidence: dict = {}
+
+    if project.code and _contains_phrase(text, project.code):
+        return Decimal("0.95"), {"matched": "project_code", "value": project.code}
+
+    for alias in project.aliases or []:
+        if _contains_phrase(text, alias):
+            return Decimal("0.90"), {"matched": "project_alias", "value": alias}
+
+    if _contains_phrase(text, project.name):
+        return Decimal("0.84"), {"matched": "project_name", "value": project.name}
+
+    score = _similarity(text, f"{project.code} {project.name}")
+    if score >= Decimal("0.78"):
+        evidence = {"matched": "fuzzy_project_name", "value": project.name}
+        return score, evidence
+
+    return Decimal("0"), {}
+def _score_qbo_customer(reference: AccountingReference, text: str) -> tuple[Decimal, dict]:
+    if _contains_phrase(text, reference.name):
+        return Decimal("0.82"), {
+            "matched": "qbo_customer_name",
+            "value": reference.name,
+        }
+
+    score = _similarity(text, reference.name)
+    if score >= Decimal("0.78"):
+        return score, {
+            "matched": "fuzzy_qbo_customer_name",
+            "value": reference.name,
+        }
+
+    return Decimal("0"), {}
+
+def _recommend_project(expense: Expense, evidence: dict) -> dict:
+    text = evidence["project_text"]
+    candidates: list[dict] = []
+
+    internal_projects = (
+        Project.objects
+        .filter(company=expense.company)
+        .select_related("qbo_customer")
+    )
+
+    for project in internal_projects:
+        score, match_evidence = _score_internal_project(project, text)
+        if not score:
+            continue
+        candidates.append(
+            _candidate(
+                object_type="internal_project",
+                object_id=project.id,
+                external_id=project.qbo_customer.external_id if project.qbo_customer_id else "",
+                label=f"{project.code} - {project.name}",
+                score=score,
+                source=match_evidence["matched"],
+                evidence=match_evidence,
+                action_required=_project_action_required(project),
+                data={
+                    "project_status": project.status,
+                    "qbo_customer_id": str(project.qbo_customer_id or ""),
+                },
+            )
+        )
+
+    linked_customer_ids = {
+        str(project.qbo_customer_id)
+        for project in internal_projects
+        if project.qbo_customer_id
+    }
+
+    qbo_customers = AccountingReference.objects.filter(
+        company=expense.company,
+        entity_type=AccountingRefType.CUSTOMER,
+        active=True,
+    )
+
+    for reference in qbo_customers:
+        score, match_evidence = _score_qbo_customer(reference, text)
+        if not score:
+            continue
+
+        already_linked = str(reference.id) in linked_customer_ids
+        candidates.append(
+            _candidate(
+                object_type="qbo_customer",
+                object_id=reference.id,
+                external_id=reference.external_id,
+                label=reference.name,
+                score=score,
+                source=match_evidence["matched"],
+                evidence=match_evidence,
+                action_required=(
+                    "" if already_linked
+                    else "QuickBooks customer exists, but no internal project is linked to it."
+                ),
+                data={"already_linked_to_internal_project": already_linked},
+            )
+        )
+
+    return _recommendation_block(
+        kind="project",
+        candidates=candidates,
+        evidence={
+            "text_used": text,
+            "email_subject": evidence["email_subject"],
+        },
+        unresolved_reason=(
+            "No project code, alias, internal project, or synced QuickBooks "
+            "customer matched the receipt evidence."
+        ),
+    )
+
+def _active_expense_accounts(company):
+
+    return AccountingReference.objects.filter(
+        company=company,
+        entity_type=AccountingRefType.ACCOUNT,
+        active=True,
+    )
+
+def _account_from_mapping_rules(rule: MappingRule, expense: Expense):
+    outputs = rule.outputs or {}
+    raw_id = (
+        outputs.get("expense_account_id")
+        or outputs.get("account_id")
+        or outputs.get("accounting_reference_id")
+
+    )
+    if not raw_id:
+        return None
+
+    return AccountingReference.objects.filter(
+        company=expense.company,
+        pk=raw_id,
+        entity_type=AccountingRefType.ACCOUNT,
+        active=True
+
+    ).first()
+
+
+def _mapping_rule_matches(rule: MappingRule, expense: Expense, evidence: dict) -> tuple[bool, dict]:
+    """Evaluate a deliberately small MappingRule condition language.
+
+    Supported condition keys:
+        vendor_name       - phrase match against receipt vendor
+        vendor_id         - current internal Vendor id
+        sender_domain     - domain contained in sender
+        keywords          - all keywords must appear in account text
+        any_keywords      - at least one keyword must appear in account text
+        project_id        - current internal Project id
+
+    Why:
+        MappingRule is user-approved memory. It should be explicit and easy to
+        audit, not a hidden learning system.
+    """
+    conditions = rule.conditions or {}
+    matched: dict = {}
+
+    vendor_name = conditions.get("vendor_name")
+    if vendor_name:
+        if not _contains_phrase(evidence["vendor_raw_name"], vendor_name):
+            return False, {}
+        matched["vendor_name"] = vendor_name
+
+    vendor_id = conditions.get("vendor_id")
+    if vendor_id:
+        if str(expense.vendor_id or "") != str(vendor_id):
+            return False, {}
+        matched["vendor_id"] = str(vendor_id)
+
+    sender_domain = conditions.get("sender_domain")
+    if sender_domain:
+        if sender_domain.lower() not in evidence["sender"].lower():
+            return False, {}
+        matched["sender_domain"] = sender_domain
+
+    text_lower = evidence["account_text"].lower()
+
+    keywords = [str(k).lower() for k in conditions.get("keywords", [])]
+    if keywords:
+        missing = [keyword for keyword in keywords if keyword not in text_lower]
+        if missing:
+            return False, {}
+        matched["keywords"] = keywords
+
+    any_keywords = [str(k).lower() for k in conditions.get("any_keywords", [])]
+    if any_keywords:
+        found = [keyword for keyword in any_keywords if keyword in text_lower]
+        if not found:
+            return False, {}
+        matched["any_keywords"] = found
+
+    project_id = conditions.get("project_id")
+    if project_id:
+        if str(expense.project_id or "") != str(project_id):
+            return False, {}
+        matched["project_id"] = str(project_id)
+
+    return True, matched
+
+def _mapping_rule_account_candidates(expense: Expense, evidence: dict) -> list[dict]:
+
+    candidates: list[dict] = []
+
+    rules = MappingRule.objects.filter(
+        company= expense.company,
+        scope= MappingScope.CATEGORY,
+        active=True,
+    ).order_by("priority")
+
+    for rule in rules:
+        matched, matched_evidence= _mapping_rule_matches(rule,expense,evidence)
+
+        if not matched:
+            continue
+
+        account = _account_from_mapping_rules(rule, expense)
+        if account is None:
+            continue
+
+        candidates.append(
+            _candidate(
+                object_type="qbo_expense_account",
+                object_id=account.id,
+                external_id=account.external_id,
+                label=account.name,
+                score=Decimal("0.98"),
+                source="mapping_rule",
+                evidence={
+                    "mapping_rule_id": str(rule.id),
+                    "mapping_rule_name": rule.name,
+                    "matched_conditions": matched_evidence,
+                },
+            )
+        )
+    return candidates
+
+
+def _best_account_for_keyword_rule(company, rule: dict, matched_keywords: list[str]):
+    accounts = list(_active_expense_accounts(company))
+
+    if not accounts:
+        return None, Decimal("0")
+
+    best_account = None
+    best_name_score = Decimal("0")
+    search_label = " ".join([*rule["labels"], *matched_keywords])
+
+    for account in accounts:
+        score= _similarity(search_label, account.name)
+        if score > best_name_score:
+            best_account = account
+            best_name_score = score
+    return best_account, best_name_score
+
+
+def _keyword_account_candidates(expense: Expense, evidence: dict) -> list[dict]:
+    candidates: list[dict] = []
+    text = evidence["account_text"].lower()
+
+    for rule in ACCOUNT_KEYWORD_RULES:
+        matched_keywords = [
+            keyword
+            for keyword in rule["keywords"]
+            if keyword.lower() in text
+        ]
+        if not matched_keywords:
+            continue
+
+        account, account_name_score = _best_account_for_keyword_rule(
+            expense.company,
+            rule,
+            matched_keywords,
+        )
+        if account is None:
+            continue
+
+        keyword_strength = min(Decimal("0.15"), Decimal("0.03") * len(matched_keywords))
+        score = Decimal("0.68") + keyword_strength + (account_name_score * Decimal("0.15"))
+        score = min(score, Decimal("0.92"))
+
+        candidates.append(
+            _candidate(
+                object_type="qbo_expense_account",
+                object_id=account.id,
+                external_id=account.external_id,
+                label=account.name,
+                score=score,
+                source="keyword_rule",
+                evidence={
+                    "rule": rule["key"],
+                    "matched_keywords": matched_keywords,
+                    "account_name_score": str(account_name_score),
+                },
+            )
+        )
+
+    return candidates
+
+def _qbo_account_name_candidates(expense: Expense, evidence: dict) -> list[dict]:
+    """Weak fallback: match receipt text directly to QBO account names.
+
+    Why weak:
+        A receipt saying "drill bits" and an account called "Tools" may not be
+        a high fuzzy score. This rule is useful as supporting evidence, but
+        MappingRule and explicit keywords should usually win.
+    """
+    candidates: list[dict] = []
+    text = evidence["account_text"]
+
+    for account in _active_expense_accounts(expense.company):
+        score = _similarity(text, account.name)
+        if score < Decimal("0.65"):
+            continue
+
+        candidates.append(
+            _candidate(
+                object_type="qbo_expense_account",
+                object_id=account.id,
+                external_id=account.external_id,
+                label=account.name,
+                score=min(score, Decimal("0.78")),
+                source="qbo_account_name_similarity",
+                evidence={
+                    "account_name": account.name,
+                    "text_used": text[:300],
+                },
+            )
+        )
+
+    return candidates
+
+
+def _recommend_expense_account(expense: Expense, evidence: dict) -> dict:
+    candidates = []
+    candidates.extend(_mapping_rule_account_candidates(expense, evidence))
+    candidates.extend(_keyword_account_candidates(expense, evidence))
+    candidates.extend(_qbo_account_name_candidates(expense, evidence))
+
+    return _recommendation_block(
+        kind="expense_account",
+        candidates=candidates,
+        evidence={
+            "text_used": evidence["account_text"],
+            "line_item_text": evidence["line_item_text"],
+        },
+        unresolved_reason=(
+            "No approved mapping rule, receipt keyword rule, or QuickBooks "
+            "account-name match produced a defensible expense account."
+        ),
+    )
