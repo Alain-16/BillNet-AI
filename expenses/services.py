@@ -5,16 +5,17 @@ from django.db import transaction
 
 import re
 from datetime import date
+from rapidfuzz import fuzz
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from accounting.models import AccountingReference
 from common.enums import (
-    AccountingRefType, AuditActorType, AuditEventType, ProjectStatus,ExpenseState,ExtractionStatus
+    AccountingRefType, AuditActorType, AuditEventType, ProjectStatus,ExpenseState,ExtractionStatus,MappingScope,PaymentType,VendorStatus
 )
 from common.errors import DomainError
-from expenses.models import Project, Expense
+from expenses.models import Project, Expense,Vendor,MappingRule
 from operations.services import record_event
 from common.errors import DomainError
 from documents.models import DocumentInterpretation,SourceDocument
@@ -35,7 +36,9 @@ CORRECTABLE_FIELDS = {
 }
 # Amounts must arrive as Decimal, never float (Invariant #2).
 _DECIMAL_FIELDS = {"subtotal", "tax_total", "total"}
-
+RECOMMENDATION_SCHEMA_VERSION = "expense_recommendations.v1"
+RESOLVED_SCORE = Decimal("0.75")
+AMBIGUITY_GAP = Decimal("0.10")
 
 def normalize_code(code: str) -> str:
 
@@ -74,6 +77,64 @@ def _json_safe(value):
     if isinstance(value, date):
         return value.isoformat()
     return value
+
+def _decimal_score(value) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.0001"))
+
+def _candidate(
+    *,
+    object_type: str,
+    label: str,
+    score,
+    source: str,
+    object_id: str = "",
+    external_id: str = "",
+    evidence: dict | None = None,
+    action_required: str = "",
+    data: dict | None = None,
+) -> dict:
+
+    return {
+        "object_type": object_type,
+        "object_id": str(object_id or ""),
+        "external_id": str(external_id or ""),
+        "label": label,
+        "score": str(_decimal_score(score)),
+        "source": source,
+        "evidence": evidence or {},
+        "action_required": action_required,
+        "data": data or {},
+    }
+
+
+def _dedupe_candidates(candidates: list[dict]) -> list[dict]:
+
+    best: dict[tuple[str, str, str], dict] = {}
+
+    for candidate in candidates:
+        key = (
+            candidate["object_type"],
+            candidate.get("object_id") or "",
+            candidate.get("external_id") or "",
+        )
+        current = best.get(key)
+        if current is None:
+            best[key] = candidate
+            continue
+        if Decimal(candidate["score"]) > Decimal(current["score"]):
+            merged = dict(candidate)
+            merged["evidence"] = {
+                **(current.get("evidence") or {}),
+                **(candidate.get("evidence") or {}),
+            }
+            best[key] = merged
+
+    return sorted(
+        best.values(),
+        key=lambda row: Decimal(row["score"]),
+        reverse=True,
+    )
+
 
 
 # ---------- lifecycle ----------
