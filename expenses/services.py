@@ -1039,3 +1039,319 @@ def _recommend_expense_account(expense: Expense, evidence: dict) -> dict:
             "account-name match produced a defensible expense account."
         ),
     )
+
+def _vendor_action_required(vendor: Vendor) -> str:
+    if vendor.status != VendorStatus.ACTIVE:
+        return "Matched internal vendor is inactive."
+    if vendor.qbo_vendor_id is None:
+        return "Matched internal vendor is not linked to a QuickBooks vendor."
+    if not vendor.qbo_vendor.active:
+        return "Matched vendor's QuickBooks vendor reference is inactive."
+    return ""
+
+
+def _score_internal_vendor(vendor: Vendor, raw_name: str) -> tuple[Decimal, dict]:
+    if not raw_name:
+        return Decimal("0"), {}
+
+    if vendor.name and vendor.name.lower() == raw_name.lower():
+        return Decimal("0.95"), {"matched": "exact_internal_vendor_name"}
+
+    for alias in vendor.aliases or []:
+        value = alias.get("value") if isinstance(alias, dict) else str(alias)
+        if value and value.lower() == raw_name.lower():
+            return Decimal("0.92"), {
+                "matched": "internal_vendor_alias",
+                "value": value,
+            }
+
+    score = _similarity(raw_name, vendor.name)
+    if score >= Decimal("0.78"):
+        return score, {
+            "matched": "fuzzy_internal_vendor_name",
+            "value": vendor.name,
+        }
+
+    return Decimal("0"), {}
+
+
+def _score_qbo_vendor(reference: AccountingReference, raw_name: str) -> tuple[Decimal, dict]:
+    if not raw_name:
+        return Decimal("0"), {}
+
+    if reference.name.lower() == raw_name.lower():
+        return Decimal("0.94"), {"matched": "exact_qbo_vendor_name"}
+
+    score = _similarity(raw_name, reference.name)
+    if score >= Decimal("0.78"):
+        return score, {
+            "matched": "fuzzy_qbo_vendor_name",
+            "value": reference.name,
+        }
+
+    return Decimal("0"), {}
+
+
+def _recommend_vendor(expense: Expense, evidence: dict) -> dict:
+    raw_name = evidence["vendor_raw_name"]
+    candidates: list[dict] = []
+
+    vendors = Vendor.objects.filter(company=expense.company).select_related("qbo_vendor")
+    for vendor in vendors:
+        score, match_evidence = _score_internal_vendor(vendor, raw_name)
+        if not score:
+            continue
+
+        candidates.append(
+            _candidate(
+                object_type="internal_vendor",
+                object_id=vendor.id,
+                external_id=vendor.qbo_vendor.external_id if vendor.qbo_vendor_id else "",
+                label=vendor.name,
+                score=score,
+                source=match_evidence["matched"],
+                evidence=match_evidence,
+                action_required=_vendor_action_required(vendor),
+                data={"qbo_vendor_id": str(vendor.qbo_vendor_id or "")},
+            )
+        )
+
+    qbo_vendors = AccountingReference.objects.filter(
+        company=expense.company,
+        entity_type=AccountingRefType.VENDOR,
+        active=True,
+    )
+    for reference in qbo_vendors:
+        score, match_evidence = _score_qbo_vendor(reference, raw_name)
+        if not score:
+            continue
+
+        linked = vendors.filter(qbo_vendor=reference).exists()
+        candidates.append(
+            _candidate(
+                object_type="qbo_vendor",
+                object_id=reference.id,
+                external_id=reference.external_id,
+                label=reference.name,
+                score=score,
+                source=match_evidence["matched"],
+                evidence=match_evidence,
+                action_required=(
+                    "" if linked
+                    else "QuickBooks vendor exists, but no internal Vendor is linked to it."
+                ),
+                data={"already_linked_to_internal_vendor": linked},
+            )
+        )
+
+    return _recommendation_block(
+        kind="vendor",
+        candidates=candidates,
+        evidence={"vendor_raw_name": raw_name},
+        unresolved_reason="No internal vendor or synced QuickBooks vendor matched the receipt vendor.",
+    )
+
+#---------------- payment account recommendation -----------#
+
+def _payment_account_blob(reference: AccountingReference) -> str:
+    return " ".join(
+        [
+            reference.name or "",
+            reference.external_id or "",
+            json.dumps(reference.data or {}, sort_keys=True),
+        ]
+    ).lower()
+
+
+def _compatible_payment_account(reference: AccountingReference, payment_type: str) -> bool:
+    blob = _payment_account_blob(reference)
+    account_type = str((reference.data or {}).get("account_type") or "").lower()
+
+    if payment_type == PaymentType.CREDIT_CARD:
+        return "credit" in account_type or "credit card" in blob or "visa" in blob or "mastercard" in blob
+
+    if payment_type == PaymentType.BANK:
+        return "bank" in account_type or "bank" in blob or "chequing" in blob or "checking" in blob
+
+    return True
+
+
+def _recommend_payment_account(expense: Expense, evidence: dict) -> dict:
+    candidates: list[dict] = []
+    last_four = evidence["card_last_four"]
+    payment_type = evidence["payment_type"]
+
+    accounts = list(
+        AccountingReference.objects.filter(
+            company=expense.company,
+            entity_type=AccountingRefType.PAYMENT_ACCOUNT,
+            active=True,
+        )
+    )
+
+    for account in accounts:
+        blob = _payment_account_blob(account)
+
+        if last_four and last_four in blob:
+            candidates.append(
+                _candidate(
+                    object_type="qbo_payment_account",
+                    object_id=account.id,
+                    external_id=account.external_id,
+                    label=account.name,
+                    score=Decimal("0.92"),
+                    source="payment_card_digits",
+                    evidence={"card_last_four": last_four},
+                )
+            )
+            continue
+
+        if payment_type and _compatible_payment_account(account, payment_type):
+            compatible_count = sum(
+                1 for ref in accounts if _compatible_payment_account(ref, payment_type)
+            )
+            score = Decimal("0.78") if compatible_count == 1 else Decimal("0.68")
+            candidates.append(
+                _candidate(
+                    object_type="qbo_payment_account",
+                    object_id=account.id,
+                    external_id=account.external_id,
+                    label=account.name,
+                    score=score,
+                    source="payment_type_compatibility",
+                    evidence={
+                        "payment_type": payment_type,
+                        "compatible_payment_account_count": compatible_count,
+                    },
+                )
+            )
+
+    return _recommendation_block(
+        kind="payment_account",
+        candidates=candidates,
+        evidence={
+            "payment_type": payment_type,
+            "card_last_four": last_four,
+        },
+        unresolved_reason="No payment account matched the receipt payment clues.",
+    )
+
+#-------- orchestration ----#
+
+def _selected_object_id(block: dict) -> str:
+    selected = block.get("selected") or {}
+    return selected.get("object_id") or ""
+
+
+def _selected_object_type(block: dict) -> str:
+    selected = block.get("selected") or {}
+    return selected.get("object_type") or ""
+
+
+def _apply_safe_recommendation_prefills(expense: Expense, package: dict) -> list[str]:
+    """Apply only safe prefills.
+
+    Why:
+        The app may assist the reviewer, but it must not silently create final
+        accounting decisions. We only prefill when the recommendation is strong.
+    """
+    changed: list[str] = []
+
+    vendor_block = package["vendor"]
+    if vendor_block["status"] == "resolved" and _selected_object_type(vendor_block) == "internal_vendor":
+        vendor_id = _selected_object_id(vendor_block)
+        vendor = Vendor.objects.filter(company=expense.company, pk=vendor_id).first()
+        if vendor and expense.vendor_id != vendor.id:
+            expense.vendor = vendor
+            changed.append("vendor")
+
+    project_block = package["project"]
+    if project_block["status"] in {"resolved", "review_required"} and _selected_object_type(project_block) == "internal_project":
+        project_id = _selected_object_id(project_block)
+        project = Project.objects.filter(company=expense.company, pk=project_id).first()
+        if project and expense.project_id != project.id:
+            expense.project = project
+            changed.append("project")
+
+    account_block = package["expense_account"]
+    if account_block["status"] == "resolved" and _selected_object_type(account_block) == "qbo_expense_account":
+        account_id = _selected_object_id(account_block)
+        account = AccountingReference.objects.filter(
+            company=expense.company,
+            pk=account_id,
+            entity_type=AccountingRefType.ACCOUNT,
+            active=True,
+        ).first()
+        if account and expense.expense_account_id != account.id:
+            expense.expense_account = account
+            changed.append("expense_account")
+
+    payment_block = package["payment_account"]
+    if payment_block["status"] == "resolved" and _selected_object_type(payment_block) == "qbo_payment_account":
+        account_id = _selected_object_id(payment_block)
+        account = AccountingReference.objects.filter(
+            company=expense.company,
+            pk=account_id,
+            entity_type=AccountingRefType.PAYMENT_ACCOUNT,
+            active=True,
+        ).first()
+        if account and expense.payment_account_id != account.id:
+            expense.payment_account = account
+            changed.append("payment_account")
+
+    return changed
+
+
+@transaction.atomic
+def recommend_expense_metadata(*, expense: Expense, actor=None) -> Expense:
+    """Run Feature 5 recommendation enrichment for one expense.
+
+    This function is idempotent. Running it again replaces the recommendation
+    package with fresh scores from current QBO references, projects, and rules.
+    """
+    expense = (
+        Expense.objects
+        .select_for_update()
+        .select_related("source_document", "source_document__message", "interpretation")
+        .get(pk=expense.pk)
+    )
+
+    evidence = _collect_recommendation_evidence(expense)
+    package = {
+        "schema_version": RECOMMENDATION_SCHEMA_VERSION,
+        "generated_at": timezone.now().isoformat(),
+        "vendor": _recommend_vendor(expense, evidence),
+        "project": _recommend_project(expense, evidence),
+        "expense_account": _recommend_expense_account(expense, evidence),
+        "payment_account": _recommend_payment_account(expense, evidence),
+    }
+
+    expense.match_candidates = package
+    changed = ["match_candidates"]
+    changed.extend(_apply_safe_recommendation_prefills(expense, package))
+
+    expense.version += 1
+    changed.extend(["version", "updated_at"])
+    expense.save(update_fields=sorted(set(changed)))
+
+    record_event(
+        company=expense.company,
+        event_type=AuditEventType.MATCH,
+        aggregate_type="Expense",
+        aggregate_id=expense.id,
+        actor_type=AuditActorType.USER if actor else AuditActorType.SYSTEM,
+        actor_id=getattr(actor, "id", ""),
+        object_version=expense.version,
+        payload={
+            "schema_version": RECOMMENDATION_SCHEMA_VERSION,
+            "statuses": {
+                "vendor": package["vendor"]["status"],
+                "project": package["project"]["status"],
+                "expense_account": package["expense_account"]["status"],
+                "payment_account": package["payment_account"]["status"],
+            },
+            "prefilled_fields": [field for field in changed if field not in {"match_candidates", "version", "updated_at"}],
+        },
+    )
+
+    return expense
