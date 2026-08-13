@@ -5,6 +5,8 @@ from datetime import datetime,timedelta
 
 import requests
 from django.utils import timezone
+from decimal import Decimal
+from datetime import date
 
 
 REQUEST_TIMEOUT = 30
@@ -99,4 +101,44 @@ class OAuth2Provider(ABC):
 
     @abstractmethod
     def revoke(self, refresh_token: str) -> None: ...
-    
+
+
+@dataclass
+class PurchaseLineDTO:
+        line_number: int
+        amount: Decimal | None = None
+        description: str = ""
+        detail_type: str = ""
+        qbo_line_id: str = ""
+        expense_account_id: str = ""
+        expense_account_name: str = ""
+        customer_id: str = ""
+        customer_name: str = ""
+        class_id: str = ""
+        class_name: str = ""
+        tax_code_id: str = ""
+        item_id: str = ""
+        item_name: str = ""
+        raw: dict = field(default_factory=dict)
+
+@dataclass
+class PurchaseDTO:
+    external_id: str
+    sync_token: str = ""
+    transaction_date: date | None = None
+    total_amount: Decimal | None = None
+    total_tax: Decimal | None = None
+    currency: str = ""
+    vendor_id: str = ""
+    vendor_name: str = ""
+    vendor_type: str = ""
+    payment_account_id: str = ""
+    payment_account_name: str = ""
+    payment_type: str = ""
+    doc_number: str = ""
+    memo: str = ""
+    is_credit: bool = False
+    is_voided: bool = False
+    updated_at: datetime | None = None
+    lines: list[PurchaseLineDTO] = field(default_factory=list)
+    raw: dict = field(default_factory=dict)

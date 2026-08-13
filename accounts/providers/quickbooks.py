@@ -51,24 +51,23 @@ class QuickBooksProvider(OAuth2Provider):
         refs += self._query(access_token, realm_id, "TaxCode", self._taxcode)
         return refs
 
-    def _query(self, access_token, realm_id, entity, mapper):
+    def _query(self, access_token, realm_id, entity, mapper, *, where: str = "Active in (true, false)"):
        
         url = f"{settings.QBO_API_BASE}/v3/company/{realm_id}/query"
         out = []
         start_position = 1
 
         while True:
+            query = (f"select * from {entity} where {where}"
+                     f"startposition {start_position} maxresults {_MAX_RESULTS}"   
+                     )
             resp = requests.get(
                 url,
-                params={
-                    "query": self._reference_query(entity, start_position),
-                    "minorversion": settings.QBO_MINOR_VERSION,
-                },
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                },
+                params={"query":query, "minorversion": settings.QBO_MINOR_VERSION},
+                headers={"Authorization": f"Bearer {access_token}",
+                         "Accept": "application/json"},
                 timeout=REQUEST_TIMEOUT,
+                         
             )
             resp.raise_for_status()
             rows = resp.json().get("QueryResponse", {}).get(entity, [])
@@ -81,15 +80,7 @@ class QuickBooksProvider(OAuth2Provider):
             if len(rows) < _MAX_RESULTS:
                 break
             start_position += _MAX_RESULTS
-
         return out
-
-    @staticmethod
-    def _reference_query(entity, start_position):
-        return (
-            f"select * from {entity} where Active in (true, false) "
-            f"startposition {start_position} maxresults {_MAX_RESULTS}"
-        )
 
     @staticmethod
     def _meta_updated(row):
