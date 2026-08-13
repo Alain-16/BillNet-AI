@@ -45,7 +45,32 @@ INTUIT_ENVIRONMENT = config("INTUIT_ENVIRONMENT", default="sandbox")
 QBO_API_BASE = ("https://sandbox-quickbooks.api.intuit.com"
                 if INTUIT_ENVIRONMENT == "sandbox"
                 else "https://quickbooks.api.intuit.com")
-QBO_MINOR_VERSION = config("QBO_MINOR_VERSION", default="73")  # pin explicitly (Dev Guide 3.e)
+QBO_MINOR_VERSION = config("QBO_MINOR_VERSION", default="73")
+INTUIT_AUTH_URL = config(
+      "INTUIT_AUTH_URL",
+      default="https://appcenter.intuit.com/connect/oauth2",
+  )
+
+INTUIT_TOKEN_URL = config(
+      "INTUIT_TOKEN_URL",
+      default="https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+  )
+
+INTUIT_REVOKE_URL = config(
+      "INTUIT_REVOKE_URL",
+      default="https://developer.api.intuit.com/v2/oauth2/tokens/revoke",
+  )
+
+QBO_API_BASE = config(
+      "QBO_API_BASE",
+      default=(
+          "https://sandbox-quickbooks.api.intuit.com"
+          if INTUIT_ENVIRONMENT == "sandbox"
+          else "https://quickbooks.api.intuit.com"
+      ),
+  )
+
+
 
 # Celery: Redis broker, NO result backend (Dev Guide 3.c). REMOVE the existing
 # CELERY_RESULT_BACKEND line and replace the celery block with:

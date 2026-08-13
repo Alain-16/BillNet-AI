@@ -6,6 +6,7 @@ from django.db import transaction
 import re
 from datetime import date
 from rapidfuzz import fuzz
+import json
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -807,6 +808,7 @@ def _active_expense_accounts(company):
         company=company,
         entity_type=AccountingRefType.ACCOUNT,
         active=True,
+        data__usable_as_expense_account=True,
     )
 
 def _account_from_mapping_rules(rule: MappingRule, expense: Expense):
@@ -824,7 +826,8 @@ def _account_from_mapping_rules(rule: MappingRule, expense: Expense):
         company=expense.company,
         pk=raw_id,
         entity_type=AccountingRefType.ACCOUNT,
-        active=True
+        active=True,
+        data__usable_as_expense_account=True,
 
     ).first()
 
@@ -1313,7 +1316,10 @@ def recommend_expense_metadata(*, expense: Expense, actor=None) -> Expense:
     expense = (
         Expense.objects
         .select_for_update()
-        .select_related("source_document", "source_document__message", "interpretation")
+        # Keep the row lock on Expense only. `source_document__message` and
+        # `interpretation` are nullable relationships; joining them under
+        # SELECT ... FOR UPDATE makes PostgreSQL reject the query.
+        .select_related("source_document")
         .get(pk=expense.pk)
     )
 

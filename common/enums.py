@@ -82,9 +82,11 @@ class ScanStatus(models.TextChoices):
 
 
 class AccountingRefType(models.TextChoices):
+    COMPANY_INFO = "COMPANY_INFO", "Company info"
     VENDOR = "VENDOR", "Vendor"
     ACCOUNT = "ACCOUNT", "Account"
     CUSTOMER = "CUSTOMER", "Customer / project"
+    ITEM = "ITEM", "Item"
     TAX_CODE = "TAX_CODE", "Tax code"
     PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT", "Payment account"
 
