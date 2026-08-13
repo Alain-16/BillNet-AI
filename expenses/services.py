@@ -424,6 +424,7 @@ def process_document(*, document: SourceDocument, actor=None) -> Expense:
         expense = transition(expense=expense, to_state=ExpenseState.EXTRACTION_PENDING,
                              actor=actor, reason="extraction complete")
     expense = apply_interpretation_fields(expense)
+    expense = recommend_expense_metadata(expense=expense, actor=actor)
     return revalidate(expense=expense, actor=actor)
 
 
