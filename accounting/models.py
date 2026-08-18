@@ -1,6 +1,6 @@
 from django.db import models
 from common.enums import (
-    AccountingRefType,PostingStatus,TransactionPurpose, PurchaseStatus,SyncEntityType,SyncStatus
+    AccountingRefType,PostingStatus,TransactionPurpose
     )
 from common.models import CompanyOwnedModel,TimeStampedModel,UUIDModel, money_field
 

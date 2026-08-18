@@ -6,7 +6,6 @@ from expenses.models import Project
 from common.enums import ExtractionStatus
 from expenses.models import Expense
 from documents.models import SourceDocument
-from expenses.services import RECOMMENDATION_SCHEMA_VERSION
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -39,18 +38,10 @@ class ProjectClosesSerializer(serializers.Serializer):
     closed_on = serializers.DateField(required=False)
 
 
-def recommendation_status_summary(expense:Expense) -> dict:
-    package = expense.match_candidates or {}
-    return {
-        key: (package.get(key) or {}).get("status", "not_run")
-        for key in ["vendor","project","expense_account","payment_account"]
-    }
-
 class ExpenseListSerializer(serializers.ModelSerializer):
     project_code = serializers.CharField(source="project.code",read_only=True, default=None)
 
     error_count = serializers.SerializerMethodField()
-    recommendation_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Expense
@@ -58,10 +49,6 @@ class ExpenseListSerializer(serializers.ModelSerializer):
             "id","state","vendor_raw_name","transaction_date","total","currency","project","project_code","error_count","version","created_at"
         ]
         read_only_fields = fields
-
-    def get_recommendation_status(self,obj) -> dict:
-        return self.recommendation_status_summary(obj)
-    
 
     def get_error_count(self, obj) -> int:
         return sum(1 for c in (obj.validations or []) if c.get("severity") == "ERROR" and not c.get("passed"))
@@ -137,16 +124,6 @@ class ExpenseCorrectionSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {f: {"required": False} for f in fields}
 
-def build_recommendation_block(expense: Expense) -> dict:
-    return expense.match_candidates or {
-        "schema_version": RECOMMENDATION_SCHEMA_VERSION,
-        "vendor": None,
-        "project": None,
-        "expense_account": None,
-        "payment_account": None,
-
-    }
-
 def build_validation_block(expense) -> dict:
 
     checks = expense.validations or []
@@ -171,6 +148,5 @@ def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
         ).data,
         "expense" : ExtractedExpenseSerializer(expense).data,
         "validation":build_validation_block(expense),
-        "recommendations": build_recommendation_block(expense)
     }
 
