@@ -87,6 +87,24 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 MALWARE_SCAN_ENABLED = config("MALWARE_SCAN_ENABLED", default=False, cast=bool)
 MONEY_ROUNDING_TOLERANCE = Decimal("0.02")
 
+OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
+
+# Two different models on purpose. Understanding is a cheap paraphrase job;
+# resolution is the one that has to reason about "reusable tool vs consumable
+# material" (doc 19), so it gets the stronger model.
+OPENAI_UNDERSTANDING_MODEL = config("OPENAI_UNDERSTANDING_MODEL", default="gpt-5.6-terra")
+OPENAI_REASONING_MODEL = config("OPENAI_REASONING_MODEL", default="gpt-5.6-terra")
+OPENAI_EMBEDDING_MODEL = config("OPENAI_EMBEDDING_MODEL", default="text-embedding-3-small")
+
+# text-embedding-3-small is 1536. If you switch models you MUST change this and
+# re-embed everything -- vectors of different dimensions are not comparable.
+EMBEDDING_DIMENSIONS = config("EMBEDDING_DIMENSIONS", default=1536, cast=int)
+
+CATEGORIZATION_TOP_K = config("CATEGORIZATION_TOP_K", default=5, cast=int)
+CATEGORIZATION_ENABLED = config("CATEGORIZATION_ENABLED", default=True, cast=bool)
+OPENAI_TIMEOUT_SECONDS = config("OPENAI_TIMEOUT_SECONDS", default=60, cast=int)
+
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

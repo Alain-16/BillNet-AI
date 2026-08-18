@@ -170,6 +170,7 @@ class AuditEventType(models.TextChoices):
     PROJECT_LINKED = "PROJECT_LINKED", "Project linked to QBO customer"
     VALIDATION = "VALIDATION", "Validation run"
     STATE_CHANGED = "STATE_CHANGED", "Expense state changed"
+    CATEGORIZATION= "CATEGORIZATION", "Categorization"
 
 
 class ExceptionSeverity(models.TextChoices):
@@ -191,3 +192,33 @@ class SourceDocumentKind(models.TextChoices):
     EMAIL_BODY = "EMAIL_BODY", "Email body"
 
 
+class MappingScope(models.TextChoices):
+    VENDOR = "VENDOR", "Vendor"
+    PROJECT = "PROJECT", "Project"
+    CATEGORY = "CATEGORY", "Expense category"                # whole expense
+    LINE_CATEGORY = "LINE_CATEGORY", "Line item category"    # NEW -- one line
+    TAX = "TAX", "Tax code"
+    PAYMENT = "PAYMENT", "Payment account"
+
+
+class CategorizationStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    COMPLETED = "COMPLETED", "Completed"
+    PARTIAL = "PARTIAL", "Partially resolved"
+    SKIPPED = "SKIPPED", "Skipped"      # validation blocked, or feature disabled
+    FAILED = "FAILED", "Failed"
+
+
+class DecisionSource(models.TextChoices):
+    """WHO decided. This is what gets surfaced in the payload so a reviewer can
+    tell a rule they wrote from a model's guess -- those carry very different
+    kinds of trust."""
+    MAPPING_RULE = "MAPPING_RULE", "Company mapping rule"
+    AI = "AI", "AI"
+    HUMAN = "HUMAN", "Human"
+
+
+class DecisionStatus(models.TextChoices):
+    MATCHED = "MATCHED", "Matched"           # deterministic: a rule fired
+    SUGGESTED = "SUGGESTED", "Suggested"     # AI proposed, human should confirm
+    UNRESOLVED = "UNRESOLVED", "Unresolved"

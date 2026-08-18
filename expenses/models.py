@@ -61,10 +61,18 @@ class MappingRule(UUIDModel, CompanyOwnedModel, TimeStampedModel, VersionedModel
     conditions = models.JSONField(default=dict)   # {vendor_id, sender_domain, keywords, ...}
     outputs = models.JSONField(default=dict)       # {account_id, tax_code_id, project_id, ...}
     priority = models.IntegerField(default=100)    # lower = higher priority
-    auto_post_permitted = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
     effective_from = models.DateTimeField(null=True, blank=True)
     effective_to = models.DateTimeField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="mapping_rules",
+    )
+
+    source_expense = models.ForeignKey(
+        "expenses.Expense", on_delete=models.SET_NULL,null=True, blank=True, related_name="derived_rules"
+    )
 
     class Meta:
         ordering = ["priority"]
@@ -118,7 +126,6 @@ class Expense(UUIDModel, CompanyOwnedModel, TimeStampedModel, VersionedModel):
                                         related_name="+")
 
     # --- folded review/policy JSON ---
-    match_candidates = models.JSONField(default=dict, blank=True)      # per-dimension ranked
     validations = models.JSONField(default=list, blank=True)          # deterministic checks
     duplicate_candidates = models.JSONField(default=list, blank=True) # linkage signals
     policy_decision = models.JSONField(default=dict, blank=True)      # current snapshot
@@ -126,6 +133,8 @@ class Expense(UUIDModel, CompanyOwnedModel, TimeStampedModel, VersionedModel):
         max_length=20, choices=PolicyOutcome.choices, blank=True,
     )
     line_items = models.JSONField(default=list,blank=True)
+    categorization = models.JSONField(default=dict, blank=True)
+    
 
     class Meta:
         indexes = [

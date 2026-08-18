@@ -2,8 +2,8 @@ from django.db import models
 from common.enums import (
     AccountingRefType,PostingStatus,TransactionPurpose
     )
-from common.models import CompanyOwnedModel,TimeStampedModel,UUIDModel, money_field
-
+from common.models import CompanyOwnedModel,TimeStampedModel,UUIDModel
+from pgvector.django import HnswIndex, VectorField
 
 # Create your models here.
 
@@ -87,4 +87,29 @@ class PostingIntent(UUIDModel, CompanyOwnedModel, TimeStampedModel):
 
 
 
+class ReferenceEmbedding(UUIDModel,CompanyOwnedModel,TimeStampedModel):
+
+    reference = models.OneToOneField(
+        "accounting.AccountingReference", on_delete=models.CASCADE, related_name="embedding_row"
+    )
+    content= models.TextField()
+    content_hash = models.CharField(max_length=64)
+    model = models.CharField(max_length=64)
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["company"]),
+
+            HnswIndex(
+                name="refembedding_hnsw_cosine",
+                fields=["embedding"],
+                m=16, ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"embedding<{self.reference_id}>"
+    
 
