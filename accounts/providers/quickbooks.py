@@ -58,7 +58,7 @@ class QuickBooksProvider(OAuth2Provider):
         start_position = 1
 
         while True:
-            query = (f"select * from {entity} where {where}"
+            query = (f"select * from {entity} where {where} "
                      f"startposition {start_position} maxresults {_MAX_RESULTS}"   
                      )
             resp = requests.get(
