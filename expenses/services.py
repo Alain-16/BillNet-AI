@@ -21,6 +21,8 @@ from documents.models import DocumentInterpretation,SourceDocument
 from documents.parsers import fields_to_expense_values
 from expenses.state_machine import transition
 from expenses.validators import blocking_errors, run_validations
+from expenses.tasks import categorize_expense_task
+from documents.services import run_extraction
 
 
 
@@ -36,49 +38,6 @@ CORRECTABLE_FIELDS = {
 # Amounts must arrive as Decimal, never float (Invariant #2).
 _DECIMAL_FIELDS = {"subtotal", "tax_total", "total"}
 
-ACCOUNT_KEYWORD_RULES = [
-    {
-        "key": "materials_supplies",
-        "labels": ["materials", "job supplies", "construction supplies"],
-        "keywords": [
-            "lumber", "wood", "plywood", "drywall", "cement", "concrete",
-            "paint", "primer", "pipe", "plumbing", "wire", "electrical",
-            "screws", "nails", "caulk", "adhesive", "insulation",
-        ],
-    },
-    {
-        "key": "tools_equipment",
-        "labels": ["tools", "equipment", "small tools"],
-        "keywords": [
-            "drill", "bit", "saw", "blade", "wrench", "hammer", "level",
-            "ladder", "tool", "grinder", "sander", "battery", "charger",
-        ],
-    },
-    {
-        "key": "safety_supplies",
-        "labels": ["safety", "safety supplies", "ppe"],
-        "keywords": [
-            "gloves", "goggles", "helmet", "hardhat", "mask", "respirator",
-            "vest", "earplugs", "safety", "ppe",
-        ],
-    },
-    {
-        "key": "fuel_vehicle",
-        "labels": ["fuel", "vehicle", "auto", "gas"],
-        "keywords": [
-            "fuel", "gas", "diesel", "petro", "shell", "chevron",
-            "parking", "toll", "car wash",
-        ],
-    },
-    {
-        "key": "office_supplies",
-        "labels": ["office", "office supplies"],
-        "keywords": [
-            "paper", "printer", "ink", "toner", "staples", "notebook",
-            "pen", "folder", "envelope",
-        ],
-    },
-]
 
 def normalize_code(code: str) -> str:
 
@@ -406,7 +365,7 @@ def process_document(*, document: SourceDocument, actor=None) -> Expense:
     Runs synchronously from the upload endpoint for now; moving it to
     .delay() later changes nothing in this function.
     """
-    from documents.services import run_extraction
+    
 
     interpretation = run_extraction(document=document, actor=actor)
     expense = create_expense_from_interpretation(interpretation=interpretation,
@@ -415,8 +374,11 @@ def process_document(*, document: SourceDocument, actor=None) -> Expense:
         expense = transition(expense=expense, to_state=ExpenseState.EXTRACTION_PENDING,
                              actor=actor, reason="extraction complete")
     expense = apply_interpretation_fields(expense)
-    # Categorization slots in here, between field extraction and validation.
-    return revalidate(expense=expense, actor=actor)
+    expense = revalidate(expense=expense, actor=actor)
+    categorize_expense_task.delay(str(expense.id))
+    expense.refresh_from_db()
+    
+    return expense
 
 
 @transaction.atomic

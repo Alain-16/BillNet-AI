@@ -138,6 +138,18 @@ def build_validation_block(expense) -> dict:
     }
 
 
+def build_categorization_block(expense) -> dict:
+
+    return expense.categorization or {
+        "schema_version":"categorization.v1",
+        "status":"PENDING",
+        "purchase_summary": "",
+        "vendor": None,
+        "project": None,
+        "line_items": [],
+    }
+
+
 def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
 
     return {
@@ -148,5 +160,6 @@ def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
         ).data,
         "expense" : ExtractedExpenseSerializer(expense).data,
         "validation":build_validation_block(expense),
+        "categorization":build_categorization_block(expense),
     }
 
