@@ -4,7 +4,7 @@ from django.utils.dateparse import parse_datetime
 
 from accounts.providers.base import OAuth2Provider, OAuthTokens, ReferenceDTO, REQUEST_TIMEOUT
 from common.enums import AccountingRefType, Provider
-
+import json as _json
 # QBO AccountType values that mean "you can pay from this" (Dev Guide decision #1:
 # both card and bank supported).
 _PAYMENT_ACCOUNT_TYPES = {"Bank", "Credit Card"}
@@ -256,3 +256,59 @@ class QuickBooksProvider(OAuth2Provider):
                 "raw": row,
             },
         )
+
+
+    def create_purchase(self, access_token:str, realm_id: str, body: dict, *, request_id:str) -> dict:
+
+
+        url = f"{settings.QBO_API_BASE}/v3/company/{realm_id}/purchase"
+        resp = requests.post(
+            url,
+            params={"minoversion":settings.QBO_MINOR_VERSION,"requestid": request_id},
+            headers={"Authorization":f"Bearer {access_token}",
+                     "Accept": "application/json",
+                     "content-Type":"application/json"},
+            json=body,
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json().get("Purchase",{})
+    
+
+    def find_recent_purchases(self, access_token: str, realm_id: str,
+                              *, date_from, date_to) -> list[dict]:
+      
+        return self._query(
+            access_token, realm_id, "Purchase", lambda row: row,
+            where=(f"TxnDate >= '{date_from.isoformat()}' "
+                   f"and TxnDate <= '{date_to.isoformat()}'"))
+
+    def attach_file(self, access_token: str, realm_id: str, *, entity_type: str,
+                    entity_id: str, filename: str, content_type: str,
+                    data: bytes) -> dict:
+      
+        
+
+        metadata = {
+            "ContentType": content_type,
+            "FileName": filename,
+            "AttachableRef": [{
+                "EntityRef": {"type": entity_type, "value": entity_id},
+                "IncludeOnSend": False,
+            }],
+        }
+        files = {
+            "file_metadata_01": ("metadata.json", _json.dumps(metadata),
+                                 "application/json"),
+            "file_content_01": (filename, data, content_type),
+        }
+        resp = requests.post(
+            f"{settings.QBO_API_BASE}/v3/company/{realm_id}/upload",
+            params={"minorversion": settings.QBO_MINOR_VERSION},
+            headers={"Authorization": f"Bearer {access_token}",
+                     "Accept": "application/json"},
+            files=files,
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
