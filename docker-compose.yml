@@ -1,0 +1,78 @@
+name: billnet
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -D ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 0
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 0
+
+  web:
+    build:
+      context: .
+      target: runtime
+    image: billnet:latest
+    restart: unless-stopped
+    command: ["web"]
+    env_file: [.env.production]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.production
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+    volumes:
+      - objects:/data/objects
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/auth/csrf"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    image: billnet:latest
+    restart: unless-stopped
+    command: ["worker"]
+    env_file: [.env.production]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.production
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+    volumes:
+      - objects:/data/objects
+
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      web: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  objects:

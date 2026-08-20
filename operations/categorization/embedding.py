@@ -1,6 +1,6 @@
 import hashlib
 from accounting.models import AccountingReference, ReferenceEmbedding
-from categorization.client import embed
+from operations.categorization.client import embed
 from common.enums import AccountingRefType
 from django.conf import settings
 

@@ -4,7 +4,7 @@ from accounting.models import ReferenceEmbedding
 
 
 def search_references(*, company, entity_types, query_vector, top_k=None,
-                      connection=None) -> list[dict]:
+                      connection=None, usable_expense_only=False) -> list[dict]:
     """Doc 23: company scope FIRST, similarity LAST.
 
     The filters are not a performance detail -- they are the tenant boundary.
@@ -19,6 +19,9 @@ def search_references(*, company, entity_types, query_vector, top_k=None,
                         reference__active=True,
                         embedding__isnull=False)
                 .select_related("reference"))
+
+    if usable_expense_only:
+        queryset = queryset.filter(reference__data__usable_as_expense_account=True)
 
     if connection is not None:
         queryset = queryset.filter(reference__connection=connection)

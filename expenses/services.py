@@ -21,7 +21,6 @@ from documents.models import DocumentInterpretation,SourceDocument
 from documents.parsers import fields_to_expense_values
 from expenses.state_machine import transition
 from expenses.validators import blocking_errors, run_validations
-from expenses.tasks import categorize_expense_task
 from documents.services import run_extraction
 
 
@@ -375,6 +374,10 @@ def process_document(*, document: SourceDocument, actor=None) -> Expense:
                              actor=actor, reason="extraction complete")
     expense = apply_interpretation_fields(expense)
     expense = revalidate(expense=expense, actor=actor)
+    # Imported HERE, not at module level: expenses.tasks imports the
+    # categorization service, which imports back into expenses -- a local
+    # import breaks that cycle without changing behaviour.
+    from expenses.tasks import categorize_expense_task
     categorize_expense_task.delay(str(expense.id))
     expense.refresh_from_db()
     

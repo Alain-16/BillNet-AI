@@ -1,0 +1,45 @@
+name: billnet-dev
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432" # published HERE so your host tools and manage.py
+        # can reach it. Deliberately absent in production.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  web:
+    build: { context: ., target: runtime }
+    env_file: [.env]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.development
+      DB_HOST: db
+    volumes:
+      - .:/app # live code, no rebuild per edit
+      - ./var/objects:/data/objects
+    ports: ["8000:8000"]
+    # runserver, not gunicorn: autoreload is the entire point in development.
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  # NO worker service. CELERY_TASK_ALWAYS_EAGER=True in config.development means
+  # tasks run inside the web process. Adding a worker here would do nothing --
+  # nothing is ever published to the queue.
+
+volumes:
+  pgdata_dev:

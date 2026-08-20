@@ -1,5 +1,5 @@
-from categorization.schemas import RESOLUTION_SCHEMA
-from categorization.client import complete_json
+from operations.categorization.schemas import RESOLUTION_SCHEMA
+from operations.categorization.client import complete_json
 from django.conf import settings
 import json
 

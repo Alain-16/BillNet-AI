@@ -21,15 +21,16 @@ def _client():
 def complete_json(*, model:str, system:str, user:str, schema:dict) -> tuple[dict, dict]:
 
         started = time.monotonic()
+        kwargs = {
+             "model":model,
+             "messages":[{"role":"system", "content":system},
+                         {"role":"user","content":user}],
+            "response_format":{"type":"json_schema","json_schema":schema},
+        }
+        if settings.OPENAI_TEMPERATURE is not None:
+             kwargs["temperature"] = settings.OPENAI_TEMPERATURE
         try:
-            response = _client().chat.completions.create(
-
-                model = model,
-                temperature=0,
-                messages=[{"role":"system","content":system},
-                          {"role":"user","content":user}],
-                response_format={"type":"json_schema","json_schema":schema}
-            )
+            response = _client().chat.completions.create(**kwargs)
         except Exception as exc:
             raise AIUnavailable(f"{model} call failed: {exc}") from exc
 

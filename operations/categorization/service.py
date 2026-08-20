@@ -1,16 +1,18 @@
 from django.db import transaction
-from categorization.client import AIUnavailable
-from categorization.validation import verify_reference
-from categorization import reasoning, retrieval, rules
-from categorization import understanding as understanding_mod
+from operations.categorization.client import AIUnavailable
+from operations.categorization.validation import verify_reference
+from operations.categorization import reasoning, retrieval, rules
+from operations.categorization import understanding as understanding_mod
 from common.enums import (
     AccountingRefType, AuditActorType,AuditEventType,CategorizationStatus,DecisionSource,DecisionStatus,
 )
 from expenses.validators import blocking_errors
-from expenses.services import record_event
+# record_event lives in operations.services. Importing it via expenses.services
+# closes a cycle: expenses.services -> expenses.tasks -> this module.
+from operations.services import record_event
 from django.conf import settings
-from datetime import timezone
-from categorization.client import embed
+from django.utils import timezone
+from operations.categorization.client import embed
 
 CATEGORIZATION_SCHEMA_VERSION = "categorization.v1"
 
@@ -79,8 +81,9 @@ def categorize(*, expense, actor=None):
                     company=expense.company,
                     entity_types=[AccountingRefType.ACCOUNT],
                     query_vector=vector,
+                    usable_expense_only=True,
                 )
-                line_candidates[item.get("line")] = retrieval.usable_expense_accounts(found)
+                line_candidates[item.get("line")] = found
 
         vendor_candidates = []
         if expense.vendor_raw_name:

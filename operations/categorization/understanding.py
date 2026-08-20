@@ -1,5 +1,5 @@
-from categorization.client import complete_json
-from categorization.schemas import UNDERSTANDING_SCHEMA
+from operations.categorization.client import complete_json
+from operations.categorization.schemas import UNDERSTANDING_SCHEMA
 from django.conf import settings
 import json
 

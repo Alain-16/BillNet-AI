@@ -30,6 +30,9 @@ _LABEL_TAX = {
     "PST": re.compile(
         rf"\bP\.?{_S}\.?{_T}\.?(?![A-Za-z])|\bPR{_O}V(?:INCIA{_L})?\s+{_T}{_A}X\b", re.I),
     "HST": re.compile(rf"\bH\.?{_S}\.?{_T}\.?(?![A-Za-z])", re.I),
+    # A lumped "SALES TAX" line. LAST on purpose: the specific codes above get
+    # first refusal, so a receipt printing both still resolves GST and PST.
+    "SALES_TAX": re.compile(rf"\b{_S}A{_L}E{_S}\s+{_T}AX\b", re.I),
 }
 _LABEL_RECEIPT_NO = re.compile(
     r"\b(?:INVOICE|RECEIPT|ORDER|TRANSACTION|TRANS|REF(?:ERENCE)?|BILL)\b"
@@ -225,7 +228,9 @@ _VENDOR_NOISE = re.compile(
     r"(?:\bPHONE\b|\bTEL\b|\bFAX\b|\bGST\s*#|\bHST\s*#|\bBN\s*#|"
     r"\bSTORE\s*(?:HRS|HOURS|#)|\bREG\s*#|\bTRANS\s*#|\bDATE\b|"
     r"\bOPERATOR\b|\bCASHIER\b|\bTERMINAL\b|\bINVOICE\b|\bRECEIPT\b|"
-    r"WWW\.|HTTP|\.COM|@)", re.I)
+    r"WWW\.|HTTP|\.COM|@|"
+    r"\bSAMPLE\b|\bSPECIMEN\b|\bVOID(?:ED)?\b|\bDUPLICATE\b|"
+    r"NOT\s+VALID|\bTRAINING\b|\bDEMO(?:NSTRATION)?\b|\bTEST\b|\bCOPY\b)", re.I)
 
 
 
@@ -304,21 +309,36 @@ def _is_candidate_description(line: str) -> bool:
 
 
 def _nearest_description(lines, amount_idx: int, end_idx: int,
-                         consumed: set, window: int = 2):
-   
-    for j in range(amount_idx + 1, min(amount_idx + 1 + window, end_idx)):
+                         consumed: set, window: int = 3):
+    """Backward FIRST, then forward.
+
+    The two layouts put the description on opposite sides of the amount:
+        Home Depot     description / qty / amount   -> ABOVE
+        Canadian Tire  sku / amount / description   -> BELOW
+    Backward wins ties safely because Canadian Tire's line above the amount is
+    a SKU with no letters -- it fails the candidate test and falls through to
+    the forward pass. Home Depot's has letters and is found immediately.
+
+    Quantity lines are STEPPED OVER rather than treated as a boundary: on Home
+    Depot the qty line sits between the description and its amount.
+    """
+    for j in range(amount_idx - 1, max(amount_idx - 1 - window, -1), -1):
         if j in consumed:
             break
         if not lines[j].strip():
+            continue
+        if _QTY_LINE.match(lines[j]):
             continue
         if _is_candidate_description(lines[j]):
             return j
         break
 
-    for j in range(amount_idx - 1, max(amount_idx - 1 - window, -1), -1):
+    for j in range(amount_idx + 1, min(amount_idx + 1 + window, end_idx)):
         if j in consumed:
             break
         if not lines[j].strip():
+            continue
+        if _QTY_LINE.match(lines[j]):
             continue
         if _is_candidate_description(lines[j]):
             return j
@@ -331,6 +351,7 @@ def _find_line_items(lines: list[str], *, end_idx: int, reconcile_to=None):
     items: list[dict] = []
     consumed: set[int] = set()      # description lines already claimed
     idx = 0
+    pending_qty = None
 
     while idx < end_idx:
         if idx in consumed:
@@ -348,9 +369,13 @@ def _find_line_items(lines: list[str], *, end_idx: int, reconcile_to=None):
         # otherwise discard "2 @ $ 8.49 ea." before we could read it.
         qty_line = _QTY_LINE.match(line)
         if qty_line:
-            if items:
-                items[-1]["quantity"] = int(qty_line.group(1))
-                items[-1]["unit_price"] = str(parse_money(qty_line.group(2)))
+            parsed = (int(qty_line.group(1)), str(parse_money(qty_line.group(2))))
+            if items and "quantity" not in items[-1]:
+                
+                items[-1]["quantity"], items[-1]["unit_price"] = parsed
+            else:
+                
+                pending_qty = parsed
             idx += 1
             continue
 
@@ -379,19 +404,22 @@ def _find_line_items(lines: list[str], *, end_idx: int, reconcile_to=None):
         # --- Layout A: description on the same line, left of the amount ---
         desc = _item_description(line[:m.start()])
         if _has_description(desc):
-            items.append(_build_item(desc, amount, idx))
-            idx += 1
-            continue
-
-        # --- Layouts B and C: amount-only line, description adjacent ---
-        desc_idx = _nearest_description(lines, idx, end_idx, consumed)
-        if desc_idx is not None:
-            items.append(_build_item(_item_description(lines[desc_idx]), amount, idx))
+            item = _build_item(desc, amount, idx)
+        else:
+            # --- Layouts B and C: amount-only line, description adjacent ---
+            desc_idx = _nearest_description(lines, idx, end_idx, consumed)
+            if desc_idx is None:
+                # No description found: the amount is deliberately DROPPED
+                # rather than stored as a nameless item.
+                idx += 1
+                continue
             consumed.add(desc_idx)
-        # No description found: the amount is deliberately DROPPED rather than
-        # stored as a nameless item. A nameless item helps nobody, and it would
-        # corrupt the reconciliation that earns this parse its confidence.
+            item = _build_item(_item_description(lines[desc_idx]), amount, idx)
 
+        if pending_qty:
+            item["quantity"], item["unit_price"] = pending_qty
+            pending_qty = None
+        items.append(item)
         idx += 1
 
     confidence, evidence = _reconcile_items(items, reconcile_to)

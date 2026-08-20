@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY',default='super-secret-key')
+SECRET_KEY = config('SECRET_KEY')
 TOKEN_ENCRYPTION_KEY= config("TOKEN_ENCRYPTION_KEY")
 
 GOOGLE_CLIENT_ID=  config("GOOGLE_CLIENT_ID", default="")
@@ -92,7 +92,7 @@ OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
 # Two different models on purpose. Understanding is a cheap paraphrase job;
 # resolution is the one that has to reason about "reusable tool vs consumable
 # material" (doc 19), so it gets the stronger model.
-OPENAI_UNDERSTANDING_MODEL = config("OPENAI_UNDERSTANDING_MODEL", default="gpt-5.6-terra")
+OPENAI_UNDERSTANDING_MODEL = config("OPENAI_UNDERSTANDING_MODEL", default="gpt-5-mini")
 OPENAI_REASONING_MODEL = config("OPENAI_REASONING_MODEL", default="gpt-5.6-terra")
 OPENAI_EMBEDDING_MODEL = config("OPENAI_EMBEDDING_MODEL", default="text-embedding-3-small")
 
@@ -103,6 +103,8 @@ EMBEDDING_DIMENSIONS = config("EMBEDDING_DIMENSIONS", default=1536, cast=int)
 CATEGORIZATION_TOP_K = config("CATEGORIZATION_TOP_K", default=5, cast=int)
 CATEGORIZATION_ENABLED = config("CATEGORIZATION_ENABLED", default=True, cast=bool)
 OPENAI_TIMEOUT_SECONDS = config("OPENAI_TIMEOUT_SECONDS", default=60, cast=int)
+_temp = config("OPENAI_TEMPERATURE", default="")
+OPENAI_TEMPERATURE = float(_temp) if _temp != "" else None
 
 
 
@@ -133,12 +135,14 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddle',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -164,12 +168,6 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -230,7 +228,7 @@ CELERY_BROKER_URL = config('CELERY_BROKER_URL',default='redis://localhost:6379')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND',default='redis://localhost:6379')
 CELERY_BEAT_SCHEDULE = 'django_celery_beat.schedulers:DatabaseScheduler'
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 LOGGING_DIR = os.path.join(BASE_DIR, 'config', 'logs')
 if not os.path.exists(LOGGING_DIR):
     os.makedirs(LOGGING_DIR)
@@ -278,7 +276,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "default": {"BACKEND":"django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
