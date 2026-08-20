@@ -65,7 +65,9 @@ class PostingIntent(UUIDModel, CompanyOwnedModel, TimeStampedModel):
     qbo_sync_token = models.CharField(max_length=32, blank=True)
     posted_at = models.DateTimeField(null=True, blank=True)
     response_summary = models.JSONField(default=dict, blank=True)    # safe metadata only
-    last_error = models.JSONField(default=dict, blank=True)          # {code, retryable, ...}
+    last_error = models.JSONField(default=dict, blank=True)
+    approved_payload = models.JSONField(default=dict, blank=True)
+    bank_matched_at= models.DateTimeField(null=True,blank=True)
 
     class Meta:
         constraints = [
