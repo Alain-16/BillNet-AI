@@ -9,4 +9,6 @@ urlpatterns = [
     path("projects/<uuid:pk>/link-customer", v.ProjectLinkCustomerView.as_view()),
     path("expenses",v.ExpenseListView.as_view()),
     path("expenses/<uuid:pk>",v.ExpenseDetailView.as_view()),
+    path("expenses/<uuid:pk>/approve", v.ExpenseApproveView.as_view()),
+    path("expenses/<uuid:pk>/confirm-match", v.ExpenseConfirmMatchView.as_view()),
 ]

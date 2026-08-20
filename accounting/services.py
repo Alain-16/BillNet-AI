@@ -26,7 +26,6 @@ from accounts.models import IntegrationConnection
 from accounts.providers import get_provider
 from accounts.services import get_valid_access_token
 from common.storage import get_object_storage
-from expenses.tasks import attach_receipt_task
 from accounts.models import IntegrationConnection
 from accounts.providers import get_provider
 from accounts.services import get_valid_access_token
@@ -427,7 +426,10 @@ def _finish_posted(intent, expense, created: dict) -> dict:
 
     # Attachment is a SEPARATE queued step. Rule 13: an attachment failure must
     # not undo a successful posting.
-    
+    #
+    # Imported HERE, not at module level: expenses.tasks imports this module, so
+    # a top-level import closes the cycle.
+    from expenses.tasks import attach_receipt_task
     attach_receipt_task.delay(str(intent.id))
     return {"posted": intent.qbo_entity_id}
 

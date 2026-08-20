@@ -8,13 +8,18 @@ from accounting.models import AccountingReference
 from accounts.permissions import IsCompanyMember, IsOwner
 from expenses.models import Project, Expense
 from expenses.serializers import (
-    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,ExpenseListSerializer,build_receipt_payload,ExpenseCorrectionSerializer
+    ProjectClosesSerializer, ProjectLinkSerializer, ProjectSerializer,ExpenseListSerializer,build_receipt_payload,ExpenseCorrectionSerializer,ApprovalSerializer
 )
 from expenses.services import (
     close_project, create_project, link_qbo_customer, projects_active_on,
     update_project,apply_corrections
 )
-
+from accounting.services import approve_for_posting
+from expenses.state_machine import transition
+from common.enums import ExpenseState, AuditEventType, AuditActorType
+from expenses.tasks import post_expense_task
+from datetime import timezone
+from operations.services import record_event
 
 class ProjectListCreateView(APIView):
     # Read = any company member (a bookkeeper needs the list to review with).
@@ -147,3 +152,43 @@ class ExpenseDetailView(APIView):
         version = data.pop("version", None)
         expense = apply_corrections(expense=expense,actor=request.user,changes=data, expected_version=version,reason=reason)
         return Response(build_receipt_payload(expense))
+
+
+
+class ExpenseApproveView(APIView):
+
+    permission_classes = [IsAuthenticated,IsCompanyMember]
+
+    def post(self,request,pk):
+        expense = get_object_or_404(Expense, pk=pk, company=request.user.company)
+        s = ApprovalSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+
+        intent = approve_for_posting(expense=expense,actor=request.user,approvals=s.validated_data)
+
+        transition(expense=expense,to_state=ExpenseState.POSTING_PENDING, actor=request.user,reason="queued for posting")
+        post_expense_task.delay(str(intent.id))
+
+        expense.refresh_from_db()
+        return Response(build_receipt_payload(expense),status=202)
+
+
+class ExpenseConfirmMatchView(APIView):
+    permission_classes=[IsAuthenticated,IsCompanyMember]
+
+    def post(self,request,pk):
+        expense = get_object_or_404(Expense,pk=pk,company=request.user.company)
+        intent = expense.posting_intents.filter(qbo_entity_id__gt="").first()
+        if intent:
+            intent.bank_matched_at = timezone.now()
+            intent.save(update_fields=["bank_matched_at","updated_at"])
+        expense = transition(expense=expense, to_state=ExpenseState.COMPLETED,actor=request.user,reason="user confirmed bank match")
+        record_event(
+            company=expense.company,
+            event_type=AuditEventType.BANK_MATCH_CONFIRMED,
+            aggregate_type="Expense",aggregate_id=expense.id,
+            actor_type=AuditActorType.USER, actor_id=request.user.id,
+            payload={"self_reported":True}
+        )
+        return Response(build_receipt_payload(expense))
+

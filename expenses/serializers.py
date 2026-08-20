@@ -6,6 +6,7 @@ from expenses.models import Project
 from common.enums import ExtractionStatus
 from expenses.models import Expense
 from documents.models import SourceDocument
+from common.enums import ExpenseState
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -149,6 +150,38 @@ def build_categorization_block(expense) -> dict:
         "line_items": [],
     }
 
+def build_posting_block(expense) -> dict:
+    """The fifth top-level object: what happened in QuickBooks, and what the
+    user must do next."""
+    intent = expense.posting_intents.order_by("-created_at").first()
+    if intent is None:
+        return {"status": "NOT_POSTED", "next_action": None}
+
+    block = {
+        "status": intent.status,
+        "qbo_purchase_id": intent.qbo_entity_id or None,
+        "doc_number": intent.doc_number_token,
+        "posted_at": intent.posted_at,
+        "attachment_id": (intent.response_summary or {}).get("attachment_id"),
+        "bank_matched_at": intent.bank_matched_at,
+        "last_error": intent.last_error or None,
+        "tax_treatment": (intent.approved_payload or {}).get("tax_treatment"),
+    }
+
+    if expense.state == ExpenseState.AWAITING_BANK_MATCH:
+        
+        block["next_action"] = {
+            "code": "MATCH_BANK_FEED",
+            "message": (
+                f"Purchase {intent.qbo_entity_id} was created in QuickBooks for "
+                f"{(intent.approved_payload or {}).get('total')} "
+                f"{(intent.approved_payload or {}).get('currency')}. When this "
+                f"charge appears in your bank feed, click MATCH -- not Add or "
+                f"Categorize. Using Add would record the expense a second time."
+            ),
+        }
+    return block
+
 
 def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
 
@@ -161,5 +194,21 @@ def build_receipt_payload(expense,*,created:bool | None = None) -> dict:
         "expense" : ExtractedExpenseSerializer(expense).data,
         "validation":build_validation_block(expense),
         "categorization":build_categorization_block(expense),
+        "posting":build_posting_block(expense)
     }
 
+
+
+class ApproveLineSerializer(serializers.Serializer):
+    source_line = serializers.IntegerField()
+    account_external_id = serializers.CharField(max_length=64)
+
+
+class ApprovalSerializer(serializers.Serializer):
+    version= serializers.IntegerField(required=False)
+    payment_type=serializers.ChoiceField(choices=["BANK","CREDIT_CARD"],required=False)
+    payment_account_external_id= serializers.CharField(max_length=64)
+    vendor_external_id=serializers.CharField(max_length=64,allow_blank=True)
+    project_external_id=serializers.CharField(required=False, allow_blank=True)
+    memo=serializers.CharField(required=False,allow_blank=True)
+    lines=ApproveLineSerializer(many=True)

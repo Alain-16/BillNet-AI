@@ -49,7 +49,7 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
                                   ExpenseState.REVIEW_REQUIRED},
     # Never blind-retry a create (Dev Guide 3.e Layer 4): readback decides.
     ExpenseState.POSTING_UNKNOWN: {ExpenseState.POSTED, ExpenseState.POSTING_PENDING},
-    ExpenseState.POSTED: set(),        # terminal
+    ExpenseState.POSTED: {ExpenseState.AWAITING_BANK_MATCH},       # terminal
     ExpenseState.REJECTED: set(),      # terminal
     ExpenseState.AWAITING_BANK_MATCH: {ExpenseState.COMPLETED},
     ExpenseState.COMPLETED: set(),  
