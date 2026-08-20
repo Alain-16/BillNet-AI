@@ -11,6 +11,7 @@ RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 
 # runtime
+FROM python:3.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -26,6 +27,7 @@ COPY requirements.txt .
 RUN pip install --no-index --find-links=/wheels -r requirements.txt && rm -rf /wheels requirements.txt
 
 WORKDIR /app
+COPY --chown=billnet:billnet . /app
 COPY --chown=billnet:billnet docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -20,6 +20,8 @@ class ExpenseState(models.TextChoices):
     POSTED = "POSTED", "Posted"
     POSTING_FAILED = "POSTING_FAILED", "Posting failed"
     POSTING_UNKNOWN = "POSTING_UNKNOWN", "Posting outcome unknown"
+    AWAITING_BANK_MATCH = "AWAITING_BANK_MATCH", "Awaiting bank match"
+    COMPLETED = "COMPLETED", "Completed"
 
 
 class UserRole(models.TextChoices):
@@ -171,6 +173,7 @@ class AuditEventType(models.TextChoices):
     VALIDATION = "VALIDATION", "Validation run"
     STATE_CHANGED = "STATE_CHANGED", "Expense state changed"
     CATEGORIZATION= "CATEGORIZATION", "Categorization"
+    BANK_MATCH_CONFIRMED = "BANK_MATCH_CONFIRMED", "Bank match confirmed"
 
 
 class ExceptionSeverity(models.TextChoices):

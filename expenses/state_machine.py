@@ -3,10 +3,11 @@ from __future__ import annotations
 from django.db import transaction
 
 from common.enums import (
-    AuditActorType, AuditEventType, ExpenseState,
+    AuditActorType, AuditEventType, ExpenseState,PostingStatus,
 )
 from common.errors import DomainError
 from operations.services import record_event
+from accounting.models import PostingIntent
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     ExpenseState.DISCOVERED: {ExpenseState.FILE_PENDING,
@@ -50,6 +51,8 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     ExpenseState.POSTING_UNKNOWN: {ExpenseState.POSTED, ExpenseState.POSTING_PENDING},
     ExpenseState.POSTED: set(),        # terminal
     ExpenseState.REJECTED: set(),      # terminal
+    ExpenseState.AWAITING_BANK_MATCH: {ExpenseState.COMPLETED},
+    ExpenseState.COMPLETED: set(),  
 }
 
 
@@ -113,3 +116,18 @@ def transition(*, expense, to_state: str, actor=None, reason: str = ""):
         payload={"from": from_state, "to": to_state, "reason": reason},
     )
     return expense
+
+
+def _require_posting_intent(expense):
+
+    exists = PostingIntent.objects.filter(expense=expense,expense_version=expense.version,status__in=[PostingStatus.PENDING, PostingStatus.CLAIMED, PostingStatus.IN_PROGRESS]
+                                          ,).exists()
+    if not exists:
+        raise DomainError("This expense has no approved posting snapshot", code="no_posting_intent")
+
+
+PREREQUISITES = {
+    ExpenseState.REVIEW_REQUIRED: [_require_interpretation],
+    ExpenseState.APPROVED: [_require_interpretation, _require_no_blocking_errors],
+    ExpenseState.POSTING_PENDING: [_require_posting_intent],   # NEW
+}
