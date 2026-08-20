@@ -92,7 +92,7 @@ def build_purchase(snapshot:dict) -> dict:
     return body
 
 
-def _assert_totas_agree(body: dict) -> None:
+def _assert_totals_agree(body: dict) -> None:
 
     line_sum = sum(Decimal(str(l["Amount"])) for l in body["Line"])
     total = Decimal(str(body["TotalAmt"]))

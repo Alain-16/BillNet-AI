@@ -300,9 +300,6 @@ def _claim(intent_id: str, worker: str) -> PostingIntent | None:
 
 def post_purchase(*, intent_id: str, worker: str = "celery") -> dict:
 
-
-    
-
     intent = _claim(intent_id, worker)
     if intent is None:
         return {"skipped": "not_claimable"}
@@ -356,8 +353,7 @@ def post_purchase(*, intent_id: str, worker: str = "celery") -> dict:
             access, conn.external_account_id, body,
             request_id=str(intent.request_id))
     except requests.Timeout:
-        # THE DANGEROUS CASE. We do not know whether QuickBooks created it.
-        # NEVER retry a create here -- ask instead.
+        
         return _resolve_unknown(intent, expense, provider, access, conn)
     except requests.HTTPError as exc:
         status_code = exc.response.status_code if exc.response is not None else 0
@@ -367,6 +363,10 @@ def post_purchase(*, intent_id: str, worker: str = "celery") -> dict:
                                "detail": (exc.response.text[:500]
                                           if exc.response is not None else str(exc))},
                               retryable=retryable)
+    except Exception as exc:                                    # ← ADD THIS
+        return _finish_failed(intent, expense,
+                              {"code": "unexpected", "detail": str(exc)[:500]},
+                              retryable=False)
 
     return _finish_posted(intent, expense, created)
 
@@ -426,9 +426,6 @@ def _finish_posted(intent, expense, created: dict) -> dict:
 
     # Attachment is a SEPARATE queued step. Rule 13: an attachment failure must
     # not undo a successful posting.
-    #
-    # Imported HERE, not at module level: expenses.tasks imports this module, so
-    # a top-level import closes the cycle.
     from expenses.tasks import attach_receipt_task
     attach_receipt_task.delay(str(intent.id))
     return {"posted": intent.qbo_entity_id}

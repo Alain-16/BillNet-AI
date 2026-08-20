@@ -120,7 +120,7 @@ def transition(*, expense, to_state: str, actor=None, reason: str = ""):
 
 def _require_posting_intent(expense):
 
-    exists = PostingIntent.objects.filter(expense=expense,expense_version=expense.version,status__in=[PostingStatus.PENDING, PostingStatus.CLAIMED, PostingStatus.IN_PROGRESS]
+    exists = PostingIntent.objects.filter(expense=expense,status__in=[PostingStatus.PENDING, PostingStatus.CLAIMED, PostingStatus.IN_PROGRESS]
                                           ,).exists()
     if not exists:
         raise DomainError("This expense has no approved posting snapshot", code="no_posting_intent")

@@ -164,7 +164,7 @@ class ExpenseApproveView(APIView):
         s = ApprovalSerializer(data=request.data)
         s.is_valid(raise_exception=True)
 
-        intent = approve_for_posting(expense=expense,actor=request.user,approvals=s.validated_data)
+        intent = approve_for_posting(expense=expense,actor=request.user,approval=s.validated_data)
 
         transition(expense=expense,to_state=ExpenseState.POSTING_PENDING, actor=request.user,reason="queued for posting")
         post_expense_task.delay(str(intent.id))
